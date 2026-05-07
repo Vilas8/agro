@@ -12,10 +12,10 @@ const MAX_RECORDS = 999;
 const API_BASE = 'https://agro-cc18.onrender.com/api';
 
 // GPS globals
-let fleetMap = null;          // Leaflet map instance (admin fleet view)
-let fleetMarkers = {};        // { machineName: L.marker }
-let userLocationMap = null;   // Leaflet map for user booking ETA
-let gpsRefreshTimer = null;   // setInterval handle
+let fleetMap = null;
+let fleetMarkers = {};
+let userLocationMap = null;
+let gpsRefreshTimer = null;
 
 // ===== DATA HANDLER =====
 const dataHandler = {
@@ -24,19 +24,9 @@ const dataHandler = {
     allData = data;
     recordCount = data.length;
     machineConfigs = {};
-    data.filter(r => r.type === 'machine_config' && r.id).forEach(mc => {
+    data.filter(r => r.type === 'machine_config').forEach(mc => {
       const name = mc.machine_name;
       if (name) machineConfigs[name] = {
-        rate_per_acre: Number(mc.rate_per_acre) || 800,
-        cost_per_km: Number(mc.cost_per_km) || 15,
-        petrol_cost_per_km: Number(mc.petrol_cost_per_km) || 25,
-        driver_cost: Number(mc.driver_cost) || 600,
-        availability: mc.availability || 'Available'
-      };
-    });
-    data.filter(r => r.type === 'machine_config' && !r.id).forEach(mc => {
-      const name = mc.machine_name;
-      if (name && !machineConfigs[name]) machineConfigs[name] = {
         rate_per_acre: Number(mc.rate_per_acre) || 800,
         cost_per_km: Number(mc.cost_per_km) || 15,
         petrol_cost_per_km: Number(mc.petrol_cost_per_km) || 25,
@@ -48,6 +38,29 @@ const dataHandler = {
     if (currentPage === 'admin-dashboard') { renderAdminMachine(); renderAdminUsers(); renderAdminBookings(); }
   }
 };
+
+// ===== FETCH ALL DATA FROM API =====
+async function fetchAllFromApi() {
+  try {
+    const [usersRes, machinesRes, bookingsRes] = await Promise.all([
+      fetch(`${API_BASE}/users`).then(r => r.json()),
+      fetch(`${API_BASE}/machine_configs`).then(r => r.json()),
+      fetch(`${API_BASE}/bookings`).then(r => r.json())
+    ]);
+    const users = (usersRes.isOk ? usersRes.data : []).map(u => ({ ...u, type: 'user' }));
+    const machines = (machinesRes.isOk ? machinesRes.data : []).map(m => ({ ...m, type: 'machine_config' }));
+    const bookings = (bookingsRes.isOk ? bookingsRes.data : []).map(b => ({ ...b, type: 'booking' }));
+    const merged = [...users, ...machines, ...bookings];
+    localStorage.setItem('agrobook_data', JSON.stringify(merged));
+    dataHandler.onDataChanged(merged);
+    return merged;
+  } catch (e) {
+    console.warn('API fetch failed, using localStorage:', e.message);
+    const local = safeLocalGet();
+    dataHandler.onDataChanged(local);
+    return local;
+  }
+}
 
 // ===== API COLLECTION HELPER =====
 function getApiCollection(type) {
@@ -85,7 +98,10 @@ window.dataSdk = {
   },
   async init(handler) {
     dataHandler.handler = handler;
+    // First render from localStorage immediately (instant UI)
     handler.onDataChanged(safeLocalGet());
+    // Then fetch fresh data from API in background
+    await fetchAllFromApi();
     return { isOk: true };
   },
   async update(record) {
@@ -188,17 +204,35 @@ async function handleRegister(e){
   if(!isValidEmail(email)){btn.disabled=false;btn.textContent='Create Account';errEl.textContent='Invalid email.';errEl.style.display='block';return;}
   if(!isValidPhone(phone)){btn.disabled=false;btn.textContent='Create Account';errEl.textContent='Invalid phone (10 digits).';errEl.style.display='block';return;}
   if(!isStrongPassword(pass)){btn.disabled=false;btn.textContent='Create Account';errEl.textContent='Weak password — 8+ chars, upper, lower, number, special char.';errEl.style.display='block';return;}
+  // Check duplicate email against live API
+  await fetchAllFromApi();
   if(allData.filter(r=>r.type==='user').find(r=>r.user_email===email)){btn.disabled=false;btn.textContent='Create Account';errEl.textContent='Email already registered.';errEl.style.display='block';return;}
   const res=await window.dataSdk.create({type:'user',user_name:name,user_email:email,user_phone:phone,user_password:pass,created_at:new Date().toISOString(),status:'active'});
   btn.disabled=false; btn.textContent='Create Account';
   if(res.isOk){showToast('Account created! Please login.','success');document.getElementById('register-form').reset();showPage('user-login');}
   else{errEl.textContent='Registration failed.';errEl.style.display='block';}
 }
+
 async function handleLogin(e){
   e.preventDefault();
   const email=document.getElementById('login-email').value.trim().toLowerCase();
   const pass=document.getElementById('login-pass').value;
   const errEl=document.getElementById('login-error'); errEl.style.display='none';
+  const btn=document.getElementById('login-btn');
+  if(btn){btn.disabled=true;btn.textContent='Logging in...';}
+  // Always fetch fresh users from API before checking credentials
+  try {
+    const res = await fetch(`${API_BASE}/users`).then(r => r.json());
+    if (res.isOk) {
+      const apiUsers = res.data.map(u => ({ ...u, type: 'user' }));
+      // Merge into allData
+      const nonUsers = allData.filter(r => r.type !== 'user');
+      const merged = [...apiUsers, ...nonUsers];
+      localStorage.setItem('agrobook_data', JSON.stringify(merged));
+      dataHandler.onDataChanged(merged);
+    }
+  } catch(e) { console.warn('Login pre-fetch failed, using local data'); }
+  if(btn){btn.disabled=false;btn.textContent='Login';}
   const user=allData.find(r=>r.type==='user'&&r.user_email===email&&r.user_password===pass);
   if(!user){errEl.textContent='Invalid email or password.';errEl.style.display='block';return;}
   currentUser=user;
@@ -207,6 +241,7 @@ async function handleLogin(e){
   showToast('Welcome back, '+user.user_name+'!','success');
   showPage('user-dashboard');
 }
+
 async function handleAdminLogin(e){
   e.preventDefault();
   const email=document.getElementById('admin-email').value.trim().toLowerCase();
@@ -270,7 +305,6 @@ async function autoFillDistanceFromGPS(){
     const machineType=document.getElementById('machine-type').value;
     if(!machineType){showToast('Select a machine type first','error');return;}
     try{
-      // Get latest machine location
       const locRes=await fetch(`${API_BASE}/location/${encodeURIComponent(machineType)}`).then(r=>r.json());
       if(locRes.isOk&&locRes.data.length){
         const latest=locRes.data[0];
@@ -280,7 +314,6 @@ async function autoFillDistanceFromGPS(){
           showToast(`Distance auto-filled: ${distRes.distance_km} km from machine's live location 📍`,'success');
         }
       } else {
-        // Fallback: use Kolar base location
         const distRes=await fetch(`${API_BASE}/distance?lat1=13.135&lng1=78.132&lat2=${userLat}&lng2=${userLng}`).then(r=>r.json());
         if(distRes.isOk){document.getElementById('distance-km').value=distRes.distance_km;showToast(`Distance from base: ${distRes.distance_km} km`,'success');}
       }
@@ -331,27 +364,36 @@ function switchUserTab(tab){
 async function renderUserBookings(){
   if(!currentUser)return;
   const container=document.getElementById('user-bookings-list'); if(!container)return;
-  const userBookings=allData.filter(r=>r.type==='booking'&&r.user_email===currentUser.user_email);
-  if(!userBookings.length){
-    container.innerHTML='<div class="empty-state"><div style="font-size:2.5rem">📋</div><div>No bookings yet. Search and book a machine above!</div></div>';
-    return;
+  container.innerHTML='<div style="color:#6b7280;font-size:0.9rem;padding:1rem">⏳ Loading bookings...</div>';
+  try {
+    // Always fetch fresh bookings from API for this user
+    const res = await fetch(`${API_BASE}/bookings?email=${encodeURIComponent(currentUser.user_email)}`).then(r => r.json());
+    const userBookings = res.isOk ? res.data : allData.filter(r=>r.type==='booking'&&r.user_email===currentUser.user_email);
+    if(!userBookings.length){
+      container.innerHTML='<div class="empty-state"><div style="font-size:2.5rem">📋</div><div>No bookings yet. Search and book a machine above!</div></div>';
+      return;
+    }
+    container.innerHTML=userBookings.map(b=>`
+      <div class="booking-card">
+        <div class="booking-header">
+          <span class="booking-machine">${b.machine_name||'Machine'}</span>
+          <span class="badge status-${(b.status||'pending').toLowerCase()}">${b.status||'Pending'}</span>
+        </div>
+        <div class="booking-details">
+          <span>🌾 ${b.crop_type||'-'}</span>
+          <span>📐 ${b.acres||'-'} acres</span>
+          <span>📍 ${b.distance||'-'} km</span>
+          <span>💰 ₹${(b.total_cost||0).toLocaleString('en-IN')}</span>
+          <span>⏱️ ${b.estimated_hours||'-'} hrs</span>
+        </div>
+        <div class="booking-date">${b.created_at?new Date(b.created_at).toLocaleDateString('en-IN'):''}</div>
+        <button class="btn btn-sm btn-outline" onclick="showBookingMap('${b.machine_name}')" style="margin-top:0.5rem;font-size:0.8rem">📡 Track Machine</button>
+      </div>`).join('');
+  } catch(e) {
+    const userBookings = allData.filter(r=>r.type==='booking'&&r.user_email===currentUser.user_email);
+    if(!userBookings.length){container.innerHTML='<div class="empty-state"><div style="font-size:2.5rem">📋</div><div>No bookings yet.</div></div>';return;}
+    container.innerHTML=userBookings.map(b=>`<div class="booking-card"><div class="booking-header"><span class="booking-machine">${b.machine_name||'Machine'}</span><span class="badge status-${(b.status||'pending').toLowerCase()}">${b.status||'Pending'}</span></div></div>`).join('');
   }
-  container.innerHTML=userBookings.map(b=>`
-    <div class="booking-card">
-      <div class="booking-header">
-        <span class="booking-machine">${b.machine_name||'Machine'}</span>
-        <span class="badge status-${(b.status||'pending').toLowerCase()}">${b.status||'Pending'}</span>
-      </div>
-      <div class="booking-details">
-        <span>🌾 ${b.crop_type||'-'}</span>
-        <span>📐 ${b.acres||'-'} acres</span>
-        <span>📍 ${b.distance||'-'} km</span>
-        <span>💰 ₹${(b.total_cost||0).toLocaleString('en-IN')}</span>
-        <span>⏱️ ${b.estimated_hours||'-'} hrs</span>
-      </div>
-      <div class="booking-date">${b.created_at?new Date(b.created_at).toLocaleDateString('en-IN'):''}</div>
-      <button class="btn btn-sm btn-outline" onclick="showBookingMap('${b.machine_name}')" style="margin-top:0.5rem;font-size:0.8rem">📡 Track Machine</button>
-    </div>`).join('');
 }
 function updateDistrictOptions(){}
 function updateVillageOptions(){}
@@ -377,7 +419,6 @@ async function showBookingMap(machineName){
   }
   modal.style.display='flex';
   document.getElementById('gps-modal-title').textContent=machineName;
-  // Init map
   if(userLocationMap){userLocationMap.remove();userLocationMap=null;}
   userLocationMap=L.map('gps-user-map').setView([13.135,78.132],12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors'}).addTo(userLocationMap);
@@ -399,16 +440,13 @@ async function refreshUserTrackingMap(machineName){
       <b>🚀 Speed:</b> ${latest.speed||0} km/h &nbsp;&nbsp;
       <b>📶 Signal:</b> ${latest.signal_strength||'--'}%&nbsp;&nbsp;
       <b>🕐 Updated:</b> ${latest.created_at}`;
-    // Live marker
     const liveIcon=L.divIcon({html:'<div style="font-size:1.8rem">🚜</div>',iconSize:[32,32],className:''});
     L.marker([lat,lng],{icon:liveIcon}).addTo(userLocationMap).bindPopup(`${machineName}<br>Speed: ${latest.speed||0} km/h`).openPopup();
     userLocationMap.setView([lat,lng],14);
-    // Trip path
     if(res.data.length>1){
       const path=res.data.map(p=>[parseFloat(p.lat),parseFloat(p.lng)]).reverse();
       L.polyline(path,{color:'#16a34a',weight:3,opacity:0.7}).addTo(userLocationMap);
     }
-    // Trip history list
     const hist=document.getElementById('trip-history');
     if(hist){
       hist.innerHTML=`<h4 style="margin:0 0 0.5rem">🗺️ Recent Pings (last ${res.data.length})</h4>`+
@@ -428,7 +466,6 @@ async function initFleetMap(){
   if(fleetMap){fleetMap.remove();fleetMap=null;fleetMarkers={};}
   fleetMap=L.map('fleet-map').setView([13.135,78.132],11);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors'}).addTo(fleetMap);
-  // Kolar base marker
   L.marker([13.135,78.132],{icon:L.divIcon({html:'<div style="font-size:1.4rem">🏠</div>',iconSize:[28,28],className:''})}).addTo(fleetMap).bindPopup('AgroBook Base — Kolar');
   await refreshFleetMap();
   startGpsRefresh();
@@ -460,7 +497,7 @@ function startGpsRefresh(){
   gpsRefreshTimer=setInterval(async()=>{
     await refreshFleetMap();
     await loadGeofenceAlerts();
-  },30000); // refresh every 30 seconds
+  },30000);
 }
 function stopGpsRefresh(){
   if(gpsRefreshTimer){clearInterval(gpsRefreshTimer);gpsRefreshTimer=null;}
@@ -498,45 +535,54 @@ async function resolveAlert(alertId,btn){
 // ===== ADMIN DASHBOARD =====
 async function renderAdminMachine(){
   const container=document.getElementById('admin-machine-container'); if(!container)return;
-  const configs=allData.filter(r=>r.type==='machine_config');
-  if(!configs.length){container.innerHTML='<div class="empty-state">No machine configs yet.</div>';return;}
-  container.innerHTML=configs.map(mc=>`
-    <div class="machine-card">
-      <div class="machine-name">${mc.machine_name}</div>
-      <div class="machine-details">
-        <span>₹${mc.rate_per_acre}/acre</span><span>₹${mc.cost_per_km}/km</span>
-        <span>Driver: ₹${mc.driver_cost}</span>
-        <span class="badge status-${(mc.availability||'available').toLowerCase()}">${mc.availability||'Available'}</span>
-      </div>
-    </div>`).join('');
+  try {
+    const res = await fetch(`${API_BASE}/machine_configs`).then(r => r.json());
+    const configs = res.isOk ? res.data : allData.filter(r=>r.type==='machine_config');
+    if(!configs.length){container.innerHTML='<div class="empty-state">No machine configs yet.</div>';return;}
+    container.innerHTML=configs.map(mc=>`
+      <div class="machine-card">
+        <div class="machine-name">${mc.machine_name}</div>
+        <div class="machine-details">
+          <span>₹${mc.rate_per_acre}/acre</span><span>₹${mc.cost_per_km}/km</span>
+          <span>Driver: ₹${mc.driver_cost}</span>
+          <span class="badge status-${(mc.availability||'available').toLowerCase()}">${mc.availability||'Available'}</span>
+        </div>
+      </div>`).join('');
+  } catch(e) { container.innerHTML='<div class="empty-state">Could not load machines.</div>'; }
 }
 async function renderAdminUsers(){
   const container=document.getElementById('admin-users-container'); if(!container)return;
-  const users=allData.filter(r=>r.type==='user');
-  if(!users.length){container.innerHTML='<div class="empty-state">No users yet.</div>';return;}
-  container.innerHTML=users.map(u=>`
-    <div class="user-card">
-      <div class="user-name">${u.user_name}</div>
-      <div class="user-details"><span>${u.user_email}</span><span>${u.user_phone}</span>
-        <span class="badge status-${(u.status||'active').toLowerCase()}">${u.status||'active'}</span>
-      </div>
-    </div>`).join('');
+  try {
+    const res = await fetch(`${API_BASE}/users`).then(r => r.json());
+    const users = res.isOk ? res.data : allData.filter(r=>r.type==='user');
+    if(!users.length){container.innerHTML='<div class="empty-state">No users yet.</div>';return;}
+    container.innerHTML=users.map(u=>`
+      <div class="user-card">
+        <div class="user-name">${u.user_name}</div>
+        <div class="user-details"><span>${u.user_email}</span><span>${u.user_phone}</span>
+          <span class="badge status-${(u.status||'active').toLowerCase()}">${u.status||'active'}</span>
+        </div>
+      </div>`).join('');
+  } catch(e) { container.innerHTML='<div class="empty-state">Could not load users.</div>'; }
 }
 async function renderAdminBookings(){
   const container=document.getElementById('admin-bookings-container'); if(!container)return;
-  const bookings=allData.filter(r=>r.type==='booking');
-  if(!bookings.length){container.innerHTML='<div class="empty-state">No bookings yet.</div>';return;}
-  container.innerHTML=bookings.map(b=>`
-    <div class="booking-card">
-      <div class="booking-header">
-        <span>${b.user_name} (${b.user_email})</span>
-        <span class="badge status-${(b.status||'pending').toLowerCase()}">${b.status||'Pending'}</span>
-      </div>
-      <div class="booking-details">
-        <span>🚜 ${b.machine_name}</span><span>🌾 ${b.crop_type||'-'}</span>
-        <span>📐 ${b.acres||'-'} acres</span><span>💰 ₹${(b.total_cost||0).toLocaleString('en-IN')}</span>
-      </div>
-    </div>`).join('');
+  try {
+    const res = await fetch(`${API_BASE}/bookings`).then(r => r.json());
+    const bookings = res.isOk ? res.data : allData.filter(r=>r.type==='booking');
+    if(!bookings.length){container.innerHTML='<div class="empty-state">No bookings yet.</div>';return;}
+    container.innerHTML=bookings.map(b=>`
+      <div class="booking-card">
+        <div class="booking-header">
+          <span>${b.user_name} (${b.user_email})</span>
+          <span class="badge status-${(b.status||'pending').toLowerCase()}">${b.status||'Pending'}</span>
+        </div>
+        <div class="booking-details">
+          <span>🚜 ${b.machine_name}</span><span>🌾 ${b.crop_type||'-'}</span>
+          <span>📐 ${b.acres||'-'} acres</span><span>💰 ₹${(b.total_cost||0).toLocaleString('en-IN')}</span>
+        </div>
+      </div>`).join('');
+  } catch(e) { container.innerHTML='<div class="empty-state">Could not load bookings.</div>'; }
 }
 
 // ===== INIT =====
