@@ -9,7 +9,7 @@ let toastTimer;
 let machineConfigs = {};
 let currentAdminMachine = 'Grass Cutter';
 const MAX_RECORDS = 999;
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = 'https://agro-cc18.onrender.com/api';
 
 // GPS globals
 let fleetMap = null;          // Leaflet map instance (admin fleet view)
