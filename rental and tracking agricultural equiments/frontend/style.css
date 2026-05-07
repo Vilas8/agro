@@ -1,0 +1,112 @@
+:root {
+  --green-deep: #1a3a1a;
+  --green-mid: #2d6a2d;
+  --green-bright: #4caf50;
+  --gold: #f5c518;
+  --cream: #fdf8ed;
+  --text-dark: #1a1a1a;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: 'DM Sans', sans-serif; background: var(--cream); color: var(--text-dark); }
+h1,h2,h3,h4,h5 { font-family: 'Syne', sans-serif; }
+
+/* Notification Bar */
+.notif-bar { background: var(--green-deep); color: #fff; overflow: hidden; white-space: nowrap; padding: 8px 0; }
+.notif-track { display: inline-block; animation: scrollLeft 22s linear infinite; }
+@keyframes scrollLeft { from { transform: translateX(100vw); } to { transform: translateX(-100%); } }
+
+/* Navbar */
+.navbar { background: #fff; border-bottom: 2px solid var(--green-bright); position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 12px rgba(0,0,0,0.07); }
+
+/* Dropdown */
+.dropdown:hover .dropdown-menu { display: block; }
+.dropdown-menu { display: none; position: absolute; top: 100%; left: 0; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; min-width: 160px; box-shadow: 0 8px 24px rgba(0,0,0,0.10); z-index: 200; }
+.dropdown-menu a { display: block; padding: 10px 18px; font-size: 14px; color: var(--text-dark); transition: background 0.15s; }
+.dropdown-menu a:hover { background: #f0fdf4; color: var(--green-mid); }
+
+/* Hero */
+.hero-bg { 
+  background: 
+    linear-gradient(rgba(15,42,15,0.7), rgba(26,92,26,0.6)), 
+    url('https://images.sbs.com.au/drupal/yourlanguage/public/punjab_farms.jpg?imwidth=1280');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  position: relative; 
+  overflow: hidden; 
+}
+
+/* Cards */
+.glass-card { background: rgba(255,255,255,0.95); border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.10); }
+
+/* Buttons */
+.btn-primary { background: var(--green-bright); color: #fff; font-family: 'Syne', sans-serif; font-weight: 600; padding: 12px 28px; border-radius: 10px; border: none; cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px; }
+.btn-primary:hover { background: var(--green-mid); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(76,175,80,0.35); }
+.btn-gold { background: var(--gold); color: var(--green-deep); font-family: 'Syne', sans-serif; font-weight: 700; padding: 12px 28px; border-radius: 10px; border: none; cursor: pointer; transition: all 0.2s; }
+.btn-gold:hover { background: #e0b015; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(245,197,24,0.4); }
+.btn-outline { background: transparent; color: var(--green-mid); border: 2px solid var(--green-bright); font-family: 'Syne', sans-serif; font-weight: 600; padding: 10px 24px; border-radius: 10px; cursor: pointer; transition: all 0.2s; }
+.btn-outline:hover { background: #f0fdf4; }
+.btn-danger { background: #ef4444; color: #fff; font-family: 'Syne', sans-serif; font-weight: 600; padding: 8px 18px; border-radius: 8px; border: none; cursor: pointer; transition: all 0.2s; font-size: 13px; }
+.btn-danger:hover { background: #dc2626; }
+.btn-sm { background: var(--green-bright); color: #fff; font-family: 'Syne', sans-serif; font-weight: 600; padding: 7px 16px; border-radius: 8px; border: none; cursor: pointer; transition: all 0.2s; font-size: 13px; }
+.btn-sm:hover { background: var(--green-mid); }
+
+/* Forms */
+.form-input { width: 100%; padding: 11px 14px; border: 2px solid #e5e7eb; border-radius: 10px; font-family: 'DM Sans', sans-serif; font-size: 15px; transition: border 0.2s; background: #fafafa; }
+.form-input:focus { outline: none; border-color: var(--green-bright); background: #fff; }
+.form-label { font-size: 13px; font-weight: 600; color: #4b5563; margin-bottom: 5px; display: block; font-family: 'Syne', sans-serif; }
+
+/* Toast */
+.toast { position: fixed; bottom: 28px; right: 28px; background: var(--green-deep); color: #fff; padding: 14px 22px; border-radius: 12px; font-size: 14px; z-index: 9999; box-shadow: 0 6px 24px rgba(0,0,0,0.25); transform: translateY(80px); opacity: 0; transition: all 0.35s cubic-bezier(.4,0,.2,1); pointer-events: none; max-width: 320px; }
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast.error { background: #dc2626; }
+.toast.success { background: #16a34a; }
+
+/* Sections */
+.section-title { font-size: clamp(24px,3.5vw,38px); font-weight: 800; color: var(--green-deep); }
+.badge { display: inline-block; background: #f0fdf4; color: var(--green-mid); border: 1px solid #bbf7d0; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 99px; font-family: 'Syne', sans-serif; }
+
+/* Stat cards */
+.stat-card { background: linear-gradient(135deg, #f0fdf4, #dcfce7); border: 1px solid #bbf7d0; border-radius: 14px; padding: 20px; text-align: center; }
+
+/* Inline confirm */
+.confirm-del-show { display: flex !important; }
+
+/* Tabs */
+.tab-btn { padding: 9px 22px; border-radius: 8px; font-family: 'Syne', sans-serif; font-weight: 600; font-size: 14px; border: none; cursor: pointer; background: transparent; color: #6b7280; transition: all 0.2s; }
+.tab-btn.active { background: var(--green-bright); color: #fff; }
+
+/* Page animations */
+.page { display: none; }
+.page.active { display: block; }
+.fade-in { animation: fadeIn 0.4s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Loader */
+.spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Status badge */
+.status-pending { background: #fef9c3; color: #854d0e; }
+.status-confirmed { background: #dcfce7; color: #166534; }
+.status-cancelled { background: #fee2e2; color: #991b1b; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #f1f5f9; }
+::-webkit-scrollbar-thumb { background: #a7f3d0; border-radius: 3px; }
+
+/* About background */
+.about-bg { 
+  background: 
+    linear-gradient(rgba(26,58,26,0.75), rgba(45,106,45,0.65)), 
+    url('https://wallpaperaccess.com/full/3279842.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+body { box-sizing: border-box; }
+
