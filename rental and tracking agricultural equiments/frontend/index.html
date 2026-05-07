@@ -1,119 +1,67 @@
 <!doctype html>
-<html lang="en" class="h-full">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AgroBook – Grass Cutter Booking</title>
-
-  <!-- dataSdk / elementSdk polyfills (local fallback) -->
   <script>
     window.elementSdk = {
       init(config) { this.config = config.defaultConfig; config.onConfigChange(this.config); }
     };
   </script>
-
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-  <!-- Leaflet for GPS map (admin Live Tracker) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <link rel="stylesheet" href="style.css">
-
-  <style>
-    /* GPS fleet map */
-    #fleet-map { height: 360px; border-radius: 12px; margin: 1rem 0; border: 1px solid #e5e7eb; }
-    .gps-panel { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:1rem; margin-top:1rem; }
-    .gps-panel h3 { margin:0 0 .75rem; color:#15803d; font-size:1rem; font-family:'Syne',sans-serif; font-weight:700; }
-    .btn-gps { background:#16a34a; color:#fff; border:none; border-radius:8px; padding:.45rem .9rem; cursor:pointer; font-size:.82rem; margin-right:.5rem; font-family:'Syne',sans-serif; font-weight:600; }
-    .btn-gps:hover { background:#15803d; }
-    .machine-status-available { background:#dcfce7; color:#166534; }
-    .machine-status-busy { background:#fee2e2; color:#991b1b; }
-    .machine-status-maintenance { background:#fef9c3; color:#854d0e; }
-
-    /* Feature cards (home page) */
-    .features { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:24px; max-width:900px; margin:0 auto; padding:40px 16px; }
-    .feature-card { background:#fff; border:1px solid #e5e7eb; border-radius:16px; padding:28px 20px; text-align:center; box-shadow:0 2px 12px rgba(0,0,0,0.06); transition:transform .2s,box-shadow .2s; }
-    .feature-card:hover { transform:translateY(-4px); box-shadow:0 8px 28px rgba(76,175,80,0.15); }
-    .feature-icon { font-size:2.2rem; margin-bottom:12px; }
-    .feature-card h3 { font-family:'Syne',sans-serif; font-weight:700; font-size:16px; margin-bottom:8px; color:var(--green-deep); }
-    .feature-card p { color:#6b7280; font-size:14px; line-height:1.6; }
-
-    /* About page contact cards */
-    .contact-card { background:#fff; border:1px solid #e5e7eb; border-radius:16px; padding:36px 24px; text-align:center; box-shadow:0 2px 12px rgba(0,0,0,0.06); display:flex; flex-direction:column; align-items:center; gap:12px; }
-
-    /* Admin / user dashboard panels */
-    .dashboard-panel { max-width:1100px; margin:0 auto; padding:32px 16px; }
-
-    /* Admin machine form grid */
-    .machine-form-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-    @media(max-width:600px){ .machine-form-grid { grid-template-columns:1fr; } }
-
-    /* Booking card */
-    .booking-card { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:20px 24px; margin-bottom:14px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
-    .booking-card .bc-left { flex:1; min-width:0; }
-    .booking-card .bc-right { display:flex; align-items:center; gap:8px; flex-shrink:0; }
-    .booking-meta { font-size:13px; color:#6b7280; margin-top:4px; }
-
-    /* User card (admin) */
-    .user-card { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:18px 22px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
-
-    /* Result cost rows */
-    .cost-row { display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:#fafafa; border-radius:8px; font-size:14px; }
-    .cost-row-total { display:flex; justify-content:space-between; align-items:center; padding:14px 18px; background:var(--green-deep); border-radius:10px; margin-top:4px; }
-  </style>
-
   <script defer src="script.js"></script>
 </head>
-<body class="h-full">
+<body>
 
-<!-- ===== TOAST ===== -->
+<!-- TOAST -->
 <div id="toast" class="toast" role="alert" aria-live="polite"></div>
 
-<!-- ================================================================
+<!-- ============================================================
      PAGE: HOME
-================================================================ -->
+============================================================ -->
 <div id="page-home" class="page active fade-in">
 
-  <!-- Scrolling Notification Bar -->
-  <div class="notif-bar" aria-label="Notifications">
-    <span class="notif-track" id="notif-text">
-      Agri-Machines now available in Kolar! &nbsp;&nbsp;|&nbsp;&nbsp;
-      🚜 Book your slot today and get priority scheduling &nbsp;&nbsp;|&nbsp;&nbsp;
-      📞 Call us: +91 81470 32767 &nbsp;&nbsp;|&nbsp;&nbsp;
-      ✅ Trusted by 500+ farmers in Kolar district &nbsp;&nbsp;|&nbsp;&nbsp;
-      💰 Transparent pricing, no hidden charges
+  <!-- Ticker / Notification Bar -->
+  <div class="notif-bar">
+    <span class="notif-track">
+      &nbsp;&nbsp;Agri-Machines now available in Kolar!&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+      🚜 Book your slot today and get priority scheduling&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+      📞 Call us: +91 81470 32767&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+      ✅ Trusted by 500+ farmers in Kolar district&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+      💰 Transparent pricing, no hidden charges&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+      🌾 Serving Kolar farmers since 2024&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+      📍 Bangarpet &bull; Kolar &bull; Mulbagal &bull; Malur&nbsp;&nbsp;&nbsp;
     </span>
   </div>
 
   <!-- Navbar -->
-  <nav class="navbar" role="navigation" aria-label="Main navigation">
-    <div style="max-width:1100px;margin:0 auto;padding:0 24px;height:68px;display:flex;align-items:center;justify-content:space-between;">
-      <!-- Logo -->
-      <div style="display:flex;align-items:center;gap:12px;cursor:pointer;" onclick="showPage('home')">
-        <div style="width:42px;height:42px;border-radius:12px;background:var(--green-bright);display:flex;align-items:center;justify-content:center;">
+  <nav class="navbar">
+    <div class="nav-inner">
+      <a class="nav-logo" onclick="showPage('home');return false;" href="#">
+        <div class="nav-logo-icon">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
             <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
             <polyline points="9 22 9 12 15 12 15 22"/>
           </svg>
         </div>
-        <div>
-          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:var(--green-deep);line-height:1.1;">
-            Agro<span style="color:var(--green-bright);">Book</span>
-          </div>
-          <div style="font-family:'Syne',sans-serif;font-weight:600;font-size:12px;color:var(--green-bright);letter-spacing:0.5px;">
-            Renting and Tracking
-          </div>
+        <div class="nav-logo-text">
+          <div class="brand-name">Agro<span>Book</span></div>
+          <div class="brand-sub">Renting and Tracking</div>
         </div>
-      </div>
-      <!-- Nav links -->
-      <div style="display:flex;align-items:center;gap:4px;">
+      </a>
+      <div class="nav-links">
         <button onclick="showPage('home')" class="tab-btn active" id="nav-home">Home</button>
         <button onclick="showPage('about')" class="tab-btn" id="nav-about">About Us</button>
-        <div class="dropdown" style="position:relative;">
-          <button class="tab-btn" style="display:flex;align-items:center;gap:6px;" id="nav-rent">
+        <div class="dropdown">
+          <button class="tab-btn" style="display:flex;align-items:center;gap:6px;">
             Rent Vendor
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           <div class="dropdown-menu">
             <a href="#" onclick="showPage('user-login');return false;">👤 User</a>
@@ -125,129 +73,117 @@
   </nav>
 
   <!-- Hero -->
-  <section class="hero-bg" style="padding:88px 24px 80px;" role="banner">
-    <div style="max-width:1100px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:48px;">
-      <div style="flex:1;min-width:280px;">
-        <span class="badge" style="background:rgba(76,175,80,0.18);color:#a7f3d0;border-color:rgba(76,175,80,0.3);margin-bottom:20px;">
-          📍 Serving Kolar District
-        </span>
-        <h1 style="font-size:clamp(34px,5vw,58px);font-weight:800;line-height:1.1;color:#fff;margin-bottom:18px;" id="hero-title-el">
-          Smart Farming<br>Starts <span style="color:var(--gold);">Here</span>
+  <section class="hero-bg">
+    <div class="hero-inner">
+      <div class="hero-text">
+        <div class="hero-badge">📍 Serving Kolar District</div>
+        <h1 class="hero-title" id="hero-title-el">
+          Smart Farming<br>Starts <span class="highlight">Here</span>
         </h1>
-        <p style="font-size:17px;color:rgba(255,255,255,0.85);line-height:1.7;margin-bottom:32px;max-width:480px;" id="hero-subtitle-el">
-          Book your machines in minutes. Transparent pricing, real-time availability, and hassle-free booking for Kolar farmers.
+        <p class="hero-sub" id="hero-subtitle-el">
+          Book your machines in minutes. Transparent pricing,
+          real-time availability, and hassle-free booking for Kolar farmers.
         </p>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;">
-          <button onclick="showPage('about')" class="btn-outline" style="color:#a7f3d0;border-color:rgba(167,243,208,0.55);">Learn More</button>
-        </div>
+        <button onclick="showPage('about')" class="btn-outline-white">Learn More</button>
       </div>
-      <div style="flex-shrink:0;">
-        <div style="width:260px;height:260px;background:rgba(255,255,255,0.08);border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid rgba(255,255,255,0.15);">
-          <div style="width:210px;height:210px;background:rgba(76,175,80,0.22);border-radius:50%;display:flex;align-items:center;justify-content:center;">
-            <img src="https://cdn-icons-png.flaticon.com/512/2917/2917995.png" alt="Farming" style="width:110px;height:110px;filter:drop-shadow(0 4px 12px rgba(0,0,0,0.3));" onerror="this.style.display='none';this.parentElement.innerHTML='<span style=font-size:90px>🌿</span>'">
-          </div>
+      <div class="hero-visual">
+        <div class="hero-visual-inner">
+          <img
+            src="https://cdn-icons-png.flaticon.com/512/2917/2917995.png"
+            alt="Farming illustration"
+            style="width:110px;height:110px;filter:drop-shadow(0 4px 12px rgba(0,0,0,0.3));"
+            onerror="this.style.display='none';this.parentElement.innerHTML='<span style=font-size:90px>🌿</span>'"
+          >
         </div>
       </div>
     </div>
   </section>
 
   <!-- Feature Cards -->
-  <section style="background:#fff;padding:8px 0;">
+  <section style="background:#fff;">
     <div class="features">
       <div class="feature-card">
         <div class="feature-icon">📋</div>
         <h3>Easy Booking</h3>
-        <p>Book your machines in minutes with instant cost breakdown.</p>
+        <p>Book your machines in minutes with an instant cost breakdown and real-time availability.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon">📡</div>
         <h3>Live GPS Tracking</h3>
-        <p>Track your booked machine in real time on a live map.</p>
+        <p>Track your booked machine in real time on an interactive live map.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon">💰</div>
         <h3>Transparent Pricing</h3>
-        <p>Auto-calculated costs based on acres, distance and machine type.</p>
+        <p>Auto-calculated costs based on acres, distance, petrol and machine type. No surprises.</p>
       </div>
     </div>
   </section>
 
   <!-- How It Works -->
-  <section style="background:#fff;padding:48px 24px 64px;" role="region" aria-labelledby="how-title">
-    <div style="max-width:900px;margin:0 auto;text-align:center;margin-bottom:40px;">
-      <span class="badge" style="margin-bottom:12px;">Simple Process</span>
-      <h2 id="how-title" class="section-title" style="margin-top:8px;">How It Works</h2>
+  <section style="background:#fff;padding:0 24px 72px;">
+    <div style="max-width:900px;margin:0 auto;text-align:center;padding-bottom:40px;">
+      <span class="badge">Simple Process</span>
+      <h2 class="section-title" style="margin-top:12px;">How It Works</h2>
     </div>
-    <div style="max-width:900px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:32px;">
-      <div style="text-align:center;padding:16px;">
-        <div style="width:72px;height:72px;border-radius:18px;margin:0 auto 16px;display:flex;align-items:center;justify-content:center;font-size:2rem;background:#f0fdf4;">📝</div>
-        <h3 style="font-family:'Syne',sans-serif;font-weight:700;margin-bottom:8px;font-size:17px;">Register & Login</h3>
-        <p style="color:#6b7280;font-size:14px;line-height:1.6;">Create your free account and login to access the booking dashboard.</p>
+    <div style="max-width:900px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:36px;">
+      <div style="text-align:center;">
+        <div style="width:76px;height:76px;border-radius:20px;margin:0 auto 18px;display:flex;align-items:center;justify-content:center;font-size:2.2rem;background:#f0fdf4;">📝</div>
+        <h3 style="font-family:'Syne',sans-serif;font-weight:700;margin-bottom:10px;font-size:17px;">Register &amp; Login</h3>
+        <p style="color:#6b7280;font-size:14px;line-height:1.7;">Create your free account and login to access the booking dashboard.</p>
       </div>
-      <div style="text-align:center;padding:16px;">
-        <div style="width:72px;height:72px;border-radius:18px;margin:0 auto 16px;display:flex;align-items:center;justify-content:center;font-size:2rem;background:#f0fdf4;">🔍</div>
-        <h3 style="font-family:'Syne',sans-serif;font-weight:700;margin-bottom:8px;font-size:17px;">Search & Calculate</h3>
-        <p style="color:#6b7280;font-size:14px;line-height:1.6;">Enter your crop type and acres. Get instant cost breakdown and estimated time.</p>
+      <div style="text-align:center;">
+        <div style="width:76px;height:76px;border-radius:20px;margin:0 auto 18px;display:flex;align-items:center;justify-content:center;font-size:2.2rem;background:#f0fdf4;">🔍</div>
+        <h3 style="font-family:'Syne',sans-serif;font-weight:700;margin-bottom:10px;font-size:17px;">Search &amp; Calculate</h3>
+        <p style="color:#6b7280;font-size:14px;line-height:1.7;">Enter your crop type and acres. Get instant cost breakdown and estimated time.</p>
       </div>
-      <div style="text-align:center;padding:16px;">
-        <div style="width:72px;height:72px;border-radius:18px;margin:0 auto 16px;display:flex;align-items:center;justify-content:center;font-size:2rem;background:#f0fdf4;">✅</div>
-        <h3 style="font-family:'Syne',sans-serif;font-weight:700;margin-bottom:8px;font-size:17px;">Book & Track</h3>
-        <p style="color:#6b7280;font-size:14px;line-height:1.6;">Confirm your booking and track the machines in real time.</p>
+      <div style="text-align:center;">
+        <div style="width:76px;height:76px;border-radius:20px;margin:0 auto 18px;display:flex;align-items:center;justify-content:center;font-size:2.2rem;background:#f0fdf4;">✅</div>
+        <h3 style="font-family:'Syne',sans-serif;font-weight:700;margin-bottom:10px;font-size:17px;">Book &amp; Track</h3>
+        <p style="color:#6b7280;font-size:14px;line-height:1.7;">Confirm your booking and track the machines in real time.</p>
       </div>
     </div>
   </section>
 
-  <!-- Footer -->
-  <footer style="background:var(--green-deep);padding:32px 16px;text-align:center;" role="contentinfo">
-    <div style="max-width:1100px;margin:0 auto;">
-      <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:#fff;">
-        Agro<span style="color:var(--green-bright);">Book</span>
-      </span>
-      <p id="footer-text-el" style="color:rgba(255,255,255,0.5);font-size:13px;margin-top:8px;">
-        © 2026 AgroBook. All rights reserved. Serving Kolar farmers.
-      </p>
-    </div>
+  <footer style="background:var(--green-deep);padding:36px 16px;text-align:center;">
+    <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:#fff;">Agro<span style="color:var(--green-bright);">Book</span></span>
+    <p id="footer-text-el" style="color:rgba(255,255,255,0.5);font-size:13px;margin-top:8px;">© 2026 AgroBook. All rights reserved. Serving Kolar farmers.</p>
   </footer>
 </div>
 
-<!-- ================================================================
+<!-- ============================================================
      PAGE: ABOUT
-================================================================ -->
+============================================================ -->
 <div id="page-about" class="page fade-in">
-
-  <!-- Scrolling Notification Bar -->
   <div class="notif-bar">
     <span class="notif-track">
-      🌾 Grass Cutter now available in Kolar! &nbsp;&nbsp;|&nbsp;&nbsp;
-      📞 Call us: +91 8147032767 &nbsp;&nbsp;|&nbsp;&nbsp;
-      ✅ Trusted by 500+ farmers
+      &nbsp;&nbsp;🌾 Grass Cutter now available in Kolar!&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+      📞 Call us: +91 8147032767&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+      ✅ Trusted by 500+ farmers&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+      📍 Kolar, Karnataka &ndash; 563101&nbsp;&nbsp;&nbsp;
     </span>
   </div>
-
-  <!-- Navbar -->
-  <nav class="navbar" role="navigation">
-    <div style="max-width:1100px;margin:0 auto;padding:0 24px;height:68px;display:flex;align-items:center;justify-content:space-between;">
-      <div style="display:flex;align-items:center;gap:12px;cursor:pointer;" onclick="showPage('home')">
-        <div style="width:42px;height:42px;border-radius:12px;background:var(--green-bright);display:flex;align-items:center;justify-content:center;">
+  <nav class="navbar">
+    <div class="nav-inner">
+      <a class="nav-logo" onclick="showPage('home');return false;" href="#">
+        <div class="nav-logo-icon">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
             <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
             <polyline points="9 22 9 12 15 12 15 22"/>
           </svg>
         </div>
-        <div>
-          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:var(--green-deep);line-height:1.1;">
-            Agro<span style="color:var(--green-bright);">Book</span>
-          </div>
-          <div style="font-family:'Syne',sans-serif;font-weight:600;font-size:12px;color:var(--green-bright);">Renting and Tracking</div>
+        <div class="nav-logo-text">
+          <div class="brand-name">Agro<span>Book</span></div>
+          <div class="brand-sub">Renting and Tracking</div>
         </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:4px;">
-        <button onclick="showPage('home')" class="tab-btn" id="nav-home-about">Home</button>
+      </a>
+      <div class="nav-links">
+        <button onclick="showPage('home')" class="tab-btn">Home</button>
         <button onclick="showPage('about')" class="tab-btn active">About Us</button>
-        <div class="dropdown" style="position:relative;">
+        <div class="dropdown">
           <button class="tab-btn" style="display:flex;align-items:center;gap:6px;">
             Rent Vendor
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           <div class="dropdown-menu">
             <a href="#" onclick="showPage('user-login');return false;">👤 User</a>
@@ -257,233 +193,229 @@
       </div>
     </div>
   </nav>
-
-  <!-- Content -->
-  <main style="max-width:900px;margin:0 auto;padding:60px 24px;" role="main">
-    <div style="text-align:center;margin-bottom:48px;">
+  <main style="max-width:960px;margin:0 auto;padding:64px 24px;">
+    <div style="text-align:center;margin-bottom:52px;">
       <span class="badge" style="margin-bottom:14px;">Get In Touch</span>
-      <h1 class="section-title" style="margin-top:10px;font-size:clamp(30px,4vw,48px);">About Us</h1>
-      <p style="color:#6b7280;font-size:16px;line-height:1.7;margin-top:12px;">
+      <h1 class="section-title" style="margin-top:12px;font-size:clamp(32px,4vw,50px);">About Us</h1>
+      <p style="color:#6b7280;font-size:16px;line-height:1.75;margin-top:14px;max-width:520px;margin-left:auto;margin-right:auto;">
         AgroBook connects Kolar farmers with quality machines for efficient, affordable farming.
       </p>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:24px;">
       <div class="contact-card">
-        <div style="width:60px;height:60px;border-radius:50%;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:1.7rem;">📞</div>
+        <div style="width:64px;height:64px;border-radius:50%;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:1.8rem;">📞</div>
         <h2 style="font-family:'Syne',sans-serif;font-weight:700;font-size:18px;">Phone</h2>
         <a href="tel:+918147032767" style="color:var(--green-mid);font-weight:600;font-size:16px;text-decoration:none;">+91 8147032767</a>
-        <p style="font-size:13px;color:#9ca3af;">Mon–Sun, 24hrs</p>
+        <p style="font-size:13px;color:#9ca3af;">Mon&ndash;Sun, 24hrs</p>
       </div>
       <div class="contact-card">
-        <div style="width:60px;height:60px;border-radius:50%;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:1.7rem;">✉️</div>
+        <div style="width:64px;height:64px;border-radius:50%;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:1.8rem;">✉️</div>
         <h2 style="font-family:'Syne',sans-serif;font-weight:700;font-size:18px;">Email</h2>
         <a href="mailto:swathigowda925@gmail.com" style="color:var(--green-mid);font-weight:600;font-size:15px;text-decoration:none;word-break:break-all;">swathigowda925@gmail.com</a>
         <p style="font-size:13px;color:#9ca3af;">Reply within 24 hours</p>
       </div>
       <div class="contact-card">
-        <div style="width:60px;height:60px;border-radius:50%;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:1.7rem;">📍</div>
+        <div style="width:64px;height:64px;border-radius:50%;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:1.8rem;">📍</div>
         <h2 style="font-family:'Syne',sans-serif;font-weight:700;font-size:18px;">Address</h2>
-        <p style="color:var(--green-mid);font-weight:600;font-size:15px;line-height:1.6;text-align:center;">AgroBook Office,<br>Kolar, Karnataka – 563101</p>
+        <p style="color:var(--green-mid);font-weight:600;font-size:15px;line-height:1.6;text-align:center;">
+          AgroBook Office,<br>Kolar, Karnataka &ndash; 563101
+        </p>
       </div>
     </div>
-    <div style="text-align:center;margin-top:48px;">
-      <button onclick="showPage('home')" class="btn-outline">← Back to Home</button>
+    <div style="text-align:center;margin-top:52px;">
+      <button onclick="showPage('home')" class="btn-outline">&larr; Back to Home</button>
     </div>
   </main>
-
   <footer style="background:var(--green-deep);padding:32px 16px;text-align:center;">
-    <div style="max-width:1100px;margin:0 auto;">
-      <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:#fff;">Agro<span style="color:var(--green-bright);">Book</span></span>
-      <p style="color:rgba(255,255,255,0.5);font-size:13px;margin-top:8px;">© 2026 AgroBook. All rights reserved. Serving Kolar farmers.</p>
-    </div>
+    <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:#fff;">Agro<span style="color:var(--green-bright);">Book</span></span>
+    <p style="color:rgba(255,255,255,0.5);font-size:13px;margin-top:8px;">© 2026 AgroBook. All rights reserved. Serving Kolar farmers.</p>
   </footer>
 </div>
 
-<!-- ================================================================
+<!-- ============================================================
      PAGE: USER REGISTER
-================================================================ -->
+============================================================ -->
 <div id="page-user-register" class="page fade-in">
-  <div style="min-height:100vh;background:linear-gradient(135deg,#f0fdf4,#dcfce7);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 16px;">
-    <div class="glass-card" style="width:100%;max-width:460px;padding:40px 36px;">
-      <div style="text-align:center;margin-bottom:28px;">
-        <div style="width:56px;height:56px;border-radius:16px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:1.8rem;margin:0 auto 12px;">🌱</div>
-        <h1 style="font-family:'Syne',sans-serif;font-weight:800;font-size:24px;color:var(--green-deep);">Register to Book</h1>
-        <p style="color:#6b7280;font-size:14px;margin-top:4px;">Register to book your Grass Cutter</p>
-      </div>
-      <form id="register-form" onsubmit="handleRegister(event)" novalidate>
-        <div style="margin-bottom:18px;">
-          <label class="form-label" for="reg-name">Full Name</label>
-          <input class="form-input" type="text" id="reg-name" placeholder="Enter your full name" required autocomplete="name">
+  <div style="min-height:100vh;background:linear-gradient(135deg,#f0fdf4,#dcfce7);display:flex;flex-direction:column;">
+    <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px 16px;">
+      <div class="glass-card" style="width:100%;max-width:460px;padding:44px 40px;">
+        <div style="text-align:center;margin-bottom:30px;">
+          <div style="width:60px;height:60px;border-radius:18px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:2rem;margin:0 auto 14px;">🌱</div>
+          <h1 style="font-family:'Syne',sans-serif;font-weight:800;font-size:26px;color:var(--green-deep);">Create Account</h1>
+          <p style="color:#6b7280;font-size:14px;margin-top:6px;">Register to book your Grass Cutter</p>
         </div>
-        <div style="margin-bottom:18px;">
-          <label class="form-label" for="reg-email">Email Address</label>
-          <input class="form-input" type="email" id="reg-email" placeholder="you@example.com" required autocomplete="email">
-        </div>
-        <div style="margin-bottom:18px;">
-          <label class="form-label" for="reg-phone">Phone Number</label>
-          <input class="form-input" type="tel" id="reg-phone" placeholder="10-digit phone number" required autocomplete="tel">
-        </div>
-        <div style="margin-bottom:6px;">
-          <label class="form-label" for="reg-pass">Password</label>
-          <div style="position:relative;">
-            <input class="form-input" type="password" id="reg-pass" placeholder="Create a strong password" required autocomplete="new-password" oninput="checkPasswordStrength(this.value,'reg-pass-strength')">
-            <button type="button" onclick="togglePassVis('reg-pass')" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#9ca3af;">
-              <i data-lucide="eye" id="reg-pass-icon" style="width:18px;height:18px;display:block;"></i>
-            </button>
+        <form id="register-form" onsubmit="handleRegister(event)" novalidate>
+          <div style="margin-bottom:18px;">
+            <label class="form-label" for="reg-name">Full Name</label>
+            <input class="form-input" type="text" id="reg-name" placeholder="Enter your full name" required autocomplete="name">
           </div>
-          <small id="reg-pass-strength" style="font-size:12px;margin-top:6px;display:block;"></small>
-        </div>
-        <div id="reg-error" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 14px;border-radius:8px;font-size:13px;margin:12px 0;"></div>
-        <button type="submit" id="reg-btn" class="btn-primary" style="width:100%;margin-top:8px;font-size:15px;">Create Account</button>
-        <p style="text-align:center;margin-top:14px;font-size:14px;color:#6b7280;">
-          Already have an account?
-          <button type="button" onclick="showPage('user-login')" style="color:var(--green-mid);font-weight:600;background:none;border:none;cursor:pointer;">Sign In</button>
-        </p>
-        <p style="text-align:center;margin-top:6px;">
-          <button type="button" onclick="showPage('home')" style="font-size:13px;color:#9ca3af;background:none;border:none;cursor:pointer;">← Back to Home</button>
-        </p>
-      </form>
+          <div style="margin-bottom:18px;">
+            <label class="form-label" for="reg-email">Email Address</label>
+            <input class="form-input" type="email" id="reg-email" placeholder="you@example.com" required autocomplete="email">
+          </div>
+          <div style="margin-bottom:18px;">
+            <label class="form-label" for="reg-phone">Phone Number</label>
+            <input class="form-input" type="tel" id="reg-phone" placeholder="10-digit mobile number" required autocomplete="tel">
+          </div>
+          <div style="margin-bottom:8px;">
+            <label class="form-label" for="reg-pass">Password</label>
+            <div style="position:relative;">
+              <input class="form-input" type="password" id="reg-pass" placeholder="Create a strong password" required autocomplete="new-password" oninput="checkPasswordStrength(this.value,'reg-pass-strength')">
+              <button type="button" onclick="togglePassVis('reg-pass')" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#9ca3af;padding:0;">
+                <i data-lucide="eye" id="reg-pass-icon" style="width:18px;height:18px;display:block;"></i>
+              </button>
+            </div>
+            <small id="reg-pass-strength" style="font-size:12px;margin-top:6px;display:block;"></small>
+          </div>
+          <div id="reg-error" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 14px;border-radius:8px;font-size:13px;margin:12px 0;"></div>
+          <button type="submit" id="reg-btn" class="btn-primary" style="width:100%;margin-top:10px;font-size:15px;padding:13px;">Create Account</button>
+          <p style="text-align:center;margin-top:16px;font-size:14px;color:#6b7280;">
+            Already have an account?
+            <button type="button" onclick="showPage('user-login')" style="color:var(--green-mid);font-weight:700;background:none;border:none;cursor:pointer;">Sign In</button>
+          </p>
+          <p style="text-align:center;margin-top:8px;">
+            <button type="button" onclick="showPage('home')" style="font-size:13px;color:#9ca3af;background:none;border:none;cursor:pointer;">&larr; Back to Home</button>
+          </p>
+        </form>
+      </div>
     </div>
+    <footer style="background:var(--green-deep);padding:28px 16px;text-align:center;">
+      <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#fff;">Agro<span style="color:var(--green-bright);">Book</span></span>
+      <p style="color:rgba(255,255,255,0.5);font-size:13px;margin-top:6px;">© 2026 AgroBook. All rights reserved. Serving Kolar farmers.</p>
+    </footer>
   </div>
-  <footer style="background:var(--green-deep);padding:28px 16px;text-align:center;">
-    <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#fff;">Agro<span style="color:var(--green-bright);">Book</span></span>
-    <p style="color:rgba(255,255,255,0.5);font-size:13px;margin-top:6px;">© 2026 AgroBook. All rights reserved. Serving Kolar farmers.</p>
-  </footer>
 </div>
 
-<!-- ================================================================
+<!-- ============================================================
      PAGE: USER LOGIN
-================================================================ -->
+============================================================ -->
 <div id="page-user-login" class="page fade-in">
-  <div style="min-height:100vh;background:linear-gradient(135deg,#f0fdf4,#dcfce7);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 16px;">
-    <div class="glass-card" style="width:100%;max-width:460px;padding:40px 36px;">
-      <div style="text-align:center;margin-bottom:28px;">
-        <div style="width:56px;height:56px;border-radius:16px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:1.8rem;margin:0 auto 12px;">🔒</div>
-        <h1 style="font-family:'Syne',sans-serif;font-weight:800;font-size:24px;color:var(--green-deep);">User Login</h1>
-        <p style="color:#6b7280;font-size:14px;margin-top:4px;">Welcome back, farmer!</p>
-      </div>
-      <form id="login-form" onsubmit="handleLogin(event)" novalidate>
-        <div style="margin-bottom:18px;">
-          <label class="form-label" for="login-email">Email Address</label>
-          <input class="form-input" type="email" id="login-email" placeholder="you@example.com" required autocomplete="email">
+  <div style="min-height:100vh;background:linear-gradient(135deg,#f0fdf4,#dcfce7);display:flex;flex-direction:column;">
+    <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px 16px;">
+      <div class="glass-card" style="width:100%;max-width:460px;padding:44px 40px;">
+        <div style="text-align:center;margin-bottom:30px;">
+          <div style="width:60px;height:60px;border-radius:18px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:2rem;margin:0 auto 14px;">🔒</div>
+          <h1 style="font-family:'Syne',sans-serif;font-weight:800;font-size:26px;color:var(--green-deep);">User Login</h1>
+          <p style="color:#6b7280;font-size:14px;margin-top:6px;">Welcome back, farmer!</p>
         </div>
-        <div style="margin-bottom:6px;">
-          <label class="form-label" for="login-pass">Password</label>
-          <div style="position:relative;">
-            <input class="form-input" type="password" id="login-pass" placeholder="Your password" required autocomplete="current-password">
-            <button type="button" onclick="togglePassVis('login-pass')" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#9ca3af;">
-              <i data-lucide="eye" id="login-pass-icon" style="width:18px;height:18px;display:block;"></i>
-            </button>
+        <form id="login-form" onsubmit="handleLogin(event)" novalidate>
+          <div style="margin-bottom:18px;">
+            <label class="form-label" for="login-email">Email Address</label>
+            <input class="form-input" type="email" id="login-email" placeholder="you@example.com" required autocomplete="email">
           </div>
-        </div>
-        <div id="login-error" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 14px;border-radius:8px;font-size:13px;margin:12px 0;"></div>
-        <button type="submit" id="login-btn" class="btn-primary" style="width:100%;margin-top:8px;font-size:15px;">Login</button>
-        <p style="text-align:center;margin-top:14px;font-size:14px;color:#6b7280;">
-          No account?
-          <button type="button" onclick="showPage('user-register')" style="color:var(--green-mid);font-weight:600;background:none;border:none;cursor:pointer;">Register</button>
-        </p>
-        <p style="text-align:center;margin-top:6px;">
-          <button type="button" onclick="showPage('home')" style="font-size:13px;color:#9ca3af;background:none;border:none;cursor:pointer;">← Back to Home</button>
-        </p>
-      </form>
+          <div style="margin-bottom:8px;">
+            <label class="form-label" for="login-pass">Password</label>
+            <div style="position:relative;">
+              <input class="form-input" type="password" id="login-pass" placeholder="Your password" required autocomplete="current-password">
+              <button type="button" onclick="togglePassVis('login-pass')" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#9ca3af;padding:0;">
+                <i data-lucide="eye" id="login-pass-icon" style="width:18px;height:18px;display:block;"></i>
+              </button>
+            </div>
+          </div>
+          <div id="login-error" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 14px;border-radius:8px;font-size:13px;margin:12px 0;"></div>
+          <button type="submit" id="login-btn" class="btn-primary" style="width:100%;margin-top:10px;font-size:15px;padding:13px;">Login</button>
+          <p style="text-align:center;margin-top:16px;font-size:14px;color:#6b7280;">
+            No account?
+            <button type="button" onclick="showPage('user-register')" style="color:var(--green-mid);font-weight:700;background:none;border:none;cursor:pointer;">Register</button>
+          </p>
+          <p style="text-align:center;margin-top:8px;">
+            <button type="button" onclick="showPage('home')" style="font-size:13px;color:#9ca3af;background:none;border:none;cursor:pointer;">&larr; Back to Home</button>
+          </p>
+        </form>
+      </div>
     </div>
+    <footer style="background:var(--green-deep);padding:28px 16px;text-align:center;">
+      <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#fff;">Agro<span style="color:var(--green-bright);">Book</span></span>
+      <p style="color:rgba(255,255,255,0.5);font-size:13px;margin-top:6px;">© 2026 AgroBook. All rights reserved. Serving Kolar farmers.</p>
+    </footer>
   </div>
-  <footer style="background:var(--green-deep);padding:28px 16px;text-align:center;">
-    <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#fff;">Agro<span style="color:var(--green-bright);">Book</span></span>
-    <p style="color:rgba(255,255,255,0.5);font-size:13px;margin-top:6px;">© 2026 AgroBook. All rights reserved. Serving Kolar farmers.</p>
-  </footer>
 </div>
 
-<!-- ================================================================
+<!-- ============================================================
      PAGE: ADMIN LOGIN
-================================================================ -->
+============================================================ -->
 <div id="page-admin-login" class="page fade-in">
-  <div style="min-height:100vh;background:linear-gradient(135deg,#0f2a0f,#1a5c1a);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 16px;">
-    <div class="glass-card" style="width:100%;max-width:460px;padding:40px 36px;">
-      <div style="text-align:center;margin-bottom:28px;">
-        <div style="width:56px;height:56px;border-radius:16px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:1.8rem;margin:0 auto 12px;">🛠️</div>
-        <h1 style="font-family:'Syne',sans-serif;font-weight:800;font-size:24px;color:var(--green-deep);">Admin Login</h1>
-        <p style="color:#6b7280;font-size:14px;margin-top:4px;">Restricted access – Admins only</p>
-      </div>
-      <form id="admin-login-form" onsubmit="handleAdminLogin(event)" novalidate>
-        <div style="margin-bottom:18px;">
-          <label class="form-label" for="admin-email">Admin Email</label>
-          <input class="form-input" type="email" id="admin-email" placeholder="admin email" required autocomplete="email">
+  <div style="min-height:100vh;background:linear-gradient(135deg,#0f2a0f,#1a5c1a);display:flex;flex-direction:column;">
+    <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px 16px;">
+      <div class="glass-card" style="width:100%;max-width:460px;padding:44px 40px;">
+        <div style="text-align:center;margin-bottom:30px;">
+          <div style="width:60px;height:60px;border-radius:18px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:2rem;margin:0 auto 14px;">🛠️</div>
+          <h1 style="font-family:'Syne',sans-serif;font-weight:800;font-size:26px;color:var(--green-deep);">Admin Login</h1>
+          <p style="color:#6b7280;font-size:14px;margin-top:6px;">Restricted access &ndash; Admins only</p>
         </div>
-        <div style="margin-bottom:6px;">
-          <label class="form-label" for="admin-pass">Password</label>
-          <div style="position:relative;">
-            <input class="form-input" type="password" id="admin-pass" placeholder="Admin password" required autocomplete="current-password">
-            <button type="button" onclick="togglePassVis('admin-pass')" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#9ca3af;">
-              <i data-lucide="eye" id="admin-pass-icon" style="width:18px;height:18px;display:block;"></i>
-            </button>
+        <form id="admin-login-form" onsubmit="handleAdminLogin(event)" novalidate>
+          <div style="margin-bottom:18px;">
+            <label class="form-label" for="admin-email">Admin Email</label>
+            <input class="form-input" type="email" id="admin-email" placeholder="admin email" required autocomplete="email">
           </div>
-        </div>
-        <div id="admin-login-error" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 14px;border-radius:8px;font-size:13px;margin:12px 0;"></div>
-        <button type="submit" id="admin-login-btn" class="btn-primary" style="width:100%;margin-top:8px;font-size:15px;">Admin Login</button>
-        <p style="text-align:center;margin-top:12px;">
-          <button type="button" onclick="showPage('home')" style="font-size:13px;color:#9ca3af;background:none;border:none;cursor:pointer;">← Back to Home</button>
-        </p>
-      </form>
+          <div style="margin-bottom:8px;">
+            <label class="form-label" for="admin-pass">Password</label>
+            <div style="position:relative;">
+              <input class="form-input" type="password" id="admin-pass" placeholder="Admin password" required autocomplete="current-password">
+              <button type="button" onclick="togglePassVis('admin-pass')" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#9ca3af;padding:0;">
+                <i data-lucide="eye" id="admin-pass-icon" style="width:18px;height:18px;display:block;"></i>
+              </button>
+            </div>
+          </div>
+          <div id="admin-login-error" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 14px;border-radius:8px;font-size:13px;margin:12px 0;"></div>
+          <button type="submit" id="admin-login-btn" class="btn-primary" style="width:100%;margin-top:10px;font-size:15px;padding:13px;">Admin Login</button>
+          <p style="text-align:center;margin-top:14px;">
+            <button type="button" onclick="showPage('home')" style="font-size:13px;color:#9ca3af;background:none;border:none;cursor:pointer;">&larr; Back to Home</button>
+          </p>
+        </form>
+      </div>
     </div>
+    <footer style="background:var(--green-deep);padding:28px 16px;text-align:center;">
+      <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#fff;">Agro<span style="color:var(--green-bright);">Book</span></span>
+      <p style="color:rgba(255,255,255,0.5);font-size:13px;margin-top:6px;">© 2026 AgroBook. All rights reserved. Serving Kolar farmers.</p>
+    </footer>
   </div>
-  <footer style="background:var(--green-deep);padding:28px 16px;text-align:center;">
-    <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#fff;">Agro<span style="color:var(--green-bright);">Book</span></span>
-    <p style="color:rgba(255,255,255,0.5);font-size:13px;margin-top:6px;">© 2026 AgroBook. All rights reserved. Serving Kolar farmers.</p>
-  </footer>
 </div>
 
-<!-- ================================================================
+<!-- ============================================================
      PAGE: USER DASHBOARD
-================================================================ -->
+============================================================ -->
 <div id="page-user-dashboard" class="page fade-in">
-
-  <!-- Notification Bar -->
   <div class="notif-bar">
     <span class="notif-track">
-      🌾 Book your machine today! &nbsp;&nbsp;|&nbsp;&nbsp; 📍 Service area: Kolar &nbsp;&nbsp;|&nbsp;&nbsp; ✅ Transparent pricing &nbsp;&nbsp;|&nbsp;&nbsp; 📡 Live GPS tracking available
+      &nbsp;&nbsp;🌾 Book your machine today!&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+      📍 Service area: Kolar District&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+      ✅ Transparent pricing &mdash; no hidden charges&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+      📡 Live GPS tracking available&nbsp;&nbsp;&nbsp;
     </span>
   </div>
-
-  <!-- Navbar -->
-  <nav class="navbar" role="navigation">
-    <div style="max-width:1100px;margin:0 auto;padding:0 24px;height:68px;display:flex;align-items:center;justify-content:space-between;">
-      <div style="display:flex;align-items:center;gap:12px;">
-        <div style="width:42px;height:42px;border-radius:12px;background:var(--green-bright);display:flex;align-items:center;justify-content:center;">
+  <nav class="navbar">
+    <div class="nav-inner">
+      <div class="nav-logo" style="cursor:default;">
+        <div class="nav-logo-icon">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
             <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
             <polyline points="9 22 9 12 15 12 15 22"/>
           </svg>
         </div>
-        <div>
-          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:var(--green-deep);line-height:1.1;">Agro<span style="color:var(--green-bright);">Book</span></div>
-          <div style="font-family:'Syne',sans-serif;font-weight:600;font-size:12px;color:var(--green-bright);">Renting and Tracking</div>
+        <div class="nav-logo-text">
+          <div class="brand-name">Agro<span>Book</span></div>
+          <div class="brand-sub">Renting and Tracking</div>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:12px;">
+      <div style="display:flex;align-items:center;gap:14px;">
         <span id="dash-username" style="font-size:14px;color:#4b5563;font-weight:500;"></span>
-        <button onclick="logout()" class="btn-outline" style="color:#ef4444;border-color:#ef4444;padding:8px 18px;font-size:13px;">Logout</button>
+        <button onclick="logout()" class="btn-outline" style="color:#ef4444;border-color:#fca5a5;padding:8px 18px;font-size:13px;">Logout</button>
       </div>
     </div>
   </nav>
-
-  <main class="dashboard-panel" role="main">
-    <!-- Tabs -->
+  <main class="dashboard-panel">
     <div style="display:flex;gap:8px;margin-bottom:28px;flex-wrap:wrap;">
-      <button class="tab-btn active" id="udash-tab-search" onclick="switchUserTab('search')">🔍 Search & Book</button>
+      <button class="tab-btn active" id="udash-tab-search" onclick="switchUserTab('search')">🔍 Search &amp; Book</button>
       <button class="tab-btn" id="udash-tab-bookings" onclick="switchUserTab('bookings')">📋 My Bookings</button>
     </div>
 
-    <!-- Tab: Search & Book -->
+    <!-- Search & Book -->
     <div id="udash-search">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start;" class="search-grid">
-        <style>.search-grid{grid-template-columns:1fr 1fr;} @media(max-width:768px){.search-grid{grid-template-columns:1fr !important;}}</style>
-
-        <!-- Form Card -->
+      <div class="two-col-grid">
         <div class="glass-card" style="padding:36px 32px;">
           <h2 style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;margin-bottom:6px;">Book a Machine</h2>
           <p style="color:#6b7280;font-size:14px;margin-bottom:28px;">Select your location and enter crop details</p>
-
           <form id="search-form" onsubmit="calculateCost(event)" novalidate>
             <div style="margin-bottom:18px;">
               <label class="form-label" for="select-district">District</label>
@@ -528,176 +460,155 @@
             <div style="margin-bottom:6px;">
               <label class="form-label" for="distance-km">
                 Distance from Machine (km)
-                <button type="button" class="btn-gps" onclick="autoFillDistanceFromGPS()" style="margin-left:8px;font-size:12px;padding:4px 10px;">📡 Auto GPS</button>
+                <button type="button" class="btn-gps" onclick="autoFillDistanceFromGPS()" style="margin-left:8px;font-size:11px;padding:4px 10px;">📡 Auto GPS</button>
               </label>
               <input class="form-input" type="number" id="distance-km" min="1" step="0.5" placeholder="e.g. 10" required>
             </div>
             <div id="search-error" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 14px;border-radius:8px;font-size:13px;margin:10px 0;"></div>
-            <button type="submit" class="btn-primary" style="width:100%;margin-top:12px;font-size:15px;">Calculate Cost</button>
+            <button type="submit" class="btn-primary" style="width:100%;margin-top:14px;font-size:15px;padding:13px;">Calculate Cost</button>
           </form>
         </div>
-
         <!-- Result Card -->
         <div id="result-card" style="display:none;">
           <div class="glass-card" style="padding:36px 32px;">
             <h2 style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;margin-bottom:6px;" id="res-machine-title">Cost Breakdown</h2>
-            <p style="color:#6b7280;font-size:14px;margin-bottom:24px;">Estimated pricing for your booking</p>
-
-            <!-- Machine summary row -->
+            <p style="color:#6b7280;font-size:14px;margin-bottom:22px;">Estimated pricing for your booking</p>
             <div style="background:#f0fdf4;border-radius:12px;padding:14px 16px;margin-bottom:16px;display:flex;gap:14px;align-items:center;">
-              <span style="font-size:2.2rem;" id="res-machine-icon">🌿</span>
+              <span style="font-size:2.4rem;" id="res-machine-icon">🌿</span>
               <div>
                 <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;" id="res-machine">Machine</div>
                 <div style="font-size:13px;color:#6b7280;">📍 Kolar | <span id="res-crop"></span> | <span id="res-acres"></span> acres</div>
               </div>
             </div>
-
-            <!-- Status badge -->
             <div id="res-machine-status" style="display:none;margin-bottom:14px;">
               <span class="badge" id="res-status-text">Available</span>
             </div>
-
-            <!-- Unavailable warning -->
             <div id="res-unavailable-warning" style="display:none;background:#fee2e2;color:#991b1b;padding:14px 16px;border-radius:10px;border-left:4px solid #ef4444;margin-bottom:16px;">
               ⚠️ Machine currently unavailable for booking.
             </div>
-
-            <!-- Cost rows -->
-            <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;">
+            <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;">
               <div class="cost-row">
-                <span>Machine Cost <span style="font-size:11px;color:#9ca3af;">(acres × rate)</span></span>
-                <span style="font-weight:700;font-family:'Syne',sans-serif;" id="res-machine-cost">—</span>
+                <span>Machine Cost <span style="font-size:11px;color:#9ca3af;">(acres &times; rate)</span></span>
+                <span style="font-weight:700;font-family:'Syne',sans-serif;" id="res-machine-cost">&mdash;</span>
               </div>
               <div class="cost-row">
-                <span>Travel Cost <span style="font-size:11px;color:#9ca3af;">(dist × cost/km)</span></span>
-                <span style="font-weight:700;font-family:'Syne',sans-serif;" id="res-travel-cost">—</span>
+                <span>Travel Cost <span style="font-size:11px;color:#9ca3af;">(dist &times; cost/km)</span></span>
+                <span style="font-weight:700;font-family:'Syne',sans-serif;" id="res-travel-cost">&mdash;</span>
               </div>
               <div class="cost-row">
                 <span>Driver Cost</span>
-                <span style="font-weight:700;font-family:'Syne',sans-serif;" id="res-driver-cost">—</span>
+                <span style="font-weight:700;font-family:'Syne',sans-serif;" id="res-driver-cost">&mdash;</span>
               </div>
               <div class="cost-row-total">
                 <span style="color:#fff;font-family:'Syne',sans-serif;font-weight:700;font-size:15px;">Total Cost</span>
-                <span style="color:var(--gold);font-family:'Syne',sans-serif;font-weight:800;font-size:20px;" id="res-total">—</span>
+                <span style="color:var(--gold);font-family:'Syne',sans-serif;font-weight:800;font-size:20px;" id="res-total">&mdash;</span>
               </div>
             </div>
-
-            <!-- Est. time -->
-            <div style="background:#f0fdf4;border-radius:10px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+            <div style="background:#f0fdf4;border-radius:10px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
               <span style="font-size:14px;color:#4b5563;">⏱️ Estimated Time</span>
-              <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--green-mid);" id="res-time">—</span>
+              <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--green-mid);" id="res-time">&mdash;</span>
             </div>
-
             <div id="book-error" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:12px;"></div>
-            <button id="book-btn" onclick="confirmBooking()" class="btn-gold" style="width:100%;font-size:15px;">✅ Confirm Booking</button>
+            <button id="book-btn" onclick="confirmBooking()" class="btn-gold" style="width:100%;font-size:15px;padding:13px;">✅ Confirm Booking</button>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Tab: My Bookings -->
+    <!-- My Bookings -->
     <div id="udash-bookings" style="display:none;">
-      <div class="glass-card" style="padding:32px;">
+      <div class="glass-card" style="padding:36px 32px;">
         <h2 style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;margin-bottom:20px;">My Bookings</h2>
         <div id="user-bookings-list">
-          <div style="text-align:center;padding:48px 16px;color:#9ca3af;">
-            <div style="font-size:2.5rem;margin-bottom:12px;">📭</div>
-            <p>No bookings yet. Search and book a Grass Cutter above!</p>
+          <div style="text-align:center;padding:56px 16px;color:#9ca3af;">
+            <div style="font-size:3rem;margin-bottom:14px;">📭</div>
+            <p style="font-size:15px;">No bookings yet. Search and book a machine above!</p>
           </div>
         </div>
       </div>
     </div>
   </main>
-
-  <footer style="background:var(--green-deep);padding:32px 16px;text-align:center;margin-top:40px;">
+  <footer style="background:var(--green-deep);padding:36px 16px;text-align:center;margin-top:48px;">
     <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:#fff;">Agro<span style="color:var(--green-bright);">Book</span></span>
     <p style="color:rgba(255,255,255,0.5);font-size:13px;margin-top:8px;">© 2026 AgroBook. All rights reserved. Serving Kolar farmers.</p>
   </footer>
 </div>
 
-<!-- ================================================================
+<!-- ============================================================
      PAGE: ADMIN DASHBOARD
-================================================================ -->
+============================================================ -->
 <div id="page-admin-dashboard" class="page fade-in">
-
-  <!-- Notification Bar -->
   <div class="notif-bar">
     <span class="notif-track">
-      🛠️ Admin Dashboard – AgroBook &nbsp;&nbsp;|&nbsp;&nbsp; Manage machines, users, and bookings from one place
+      &nbsp;&nbsp;🛠️ Admin Dashboard &ndash; AgroBook&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+      Manage machines, users, and bookings from one place&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+      📡 GPS Fleet Tracker available&nbsp;&nbsp;&nbsp;
     </span>
   </div>
-
-  <!-- Navbar -->
-  <nav class="navbar" role="navigation">
-    <div style="max-width:1100px;margin:0 auto;padding:0 24px;height:68px;display:flex;align-items:center;justify-content:space-between;">
-      <div style="display:flex;align-items:center;gap:12px;">
-        <div style="width:42px;height:42px;border-radius:12px;background:var(--green-bright);display:flex;align-items:center;justify-content:center;">
+  <nav class="navbar">
+    <div class="nav-inner">
+      <div class="nav-logo" style="cursor:default;">
+        <div class="nav-logo-icon">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
             <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
             <polyline points="9 22 9 12 15 12 15 22"/>
           </svg>
         </div>
-        <div>
-          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:var(--green-deep);line-height:1.1;">
-            Agro<span style="color:var(--green-bright);">Book</span>
-            <span style="font-size:13px;color:#6b7280;font-weight:500;font-family:'DM Sans',sans-serif;"> [Admin]</span>
-          </div>
-          <div style="font-family:'Syne',sans-serif;font-weight:600;font-size:12px;color:var(--green-bright);">Renting and Tracking</div>
+        <div class="nav-logo-text">
+          <div class="brand-name">Agro<span>Book</span> <span style="font-size:13px;color:#6b7280;font-weight:500;font-family:'DM Sans',sans-serif;">[Admin]</span></div>
+          <div class="brand-sub">Renting and Tracking</div>
         </div>
       </div>
-      <button onclick="logout()" class="btn-outline" style="color:#ef4444;border-color:#ef4444;padding:9px 20px;font-size:14px;">Logout</button>
+      <button onclick="logout()" class="btn-outline" style="color:#ef4444;border-color:#fca5a5;padding:9px 20px;font-size:14px;">Logout</button>
     </div>
   </nav>
-
-  <main class="dashboard-panel" role="main">
-
-    <!-- Admin Tabs: Machines | Users | Bookings | Live Tracker -->
+  <main class="dashboard-panel">
+    <!-- Admin Tabs -->
     <div style="display:flex;gap:8px;margin-bottom:28px;flex-wrap:wrap;">
-      <button class="tab-btn active" id="adm-tab-machine" onclick="switchAdminTab('machine')">🚜 Machines</button>
-      <button class="tab-btn" id="adm-tab-users" onclick="switchAdminTab('users')">👤 Users</button>
-      <button class="tab-btn" id="adm-tab-bookings" onclick="switchAdminTab('bookings')">📋 Bookings</button>
-      <button class="tab-btn" id="adm-tab-tracker" onclick="switchAdminTab('tracker')">📡 Live Tracker</button>
+      <button class="tab-btn active" id="adm-tab-machine"  onclick="switchAdminTab('machine')">🚜 Machines</button>
+      <button class="tab-btn"        id="adm-tab-users"    onclick="switchAdminTab('users')">👤 Users</button>
+      <button class="tab-btn"        id="adm-tab-bookings" onclick="switchAdminTab('bookings')">📋 Bookings</button>
+      <button class="tab-btn"        id="adm-tab-tracker"  onclick="switchAdminTab('tracker')">📡 Live Tracker</button>
     </div>
 
-    <!-- ── Tab: Machines ── -->
+    <!-- Machines Tab -->
     <div id="adm-machine">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start;" class="admin-grid">
-        <style>.admin-grid{grid-template-columns:1fr 1fr;} @media(max-width:768px){.admin-grid{grid-template-columns:1fr !important;}}</style>
-
-        <!-- Machine Form -->
+      <div class="two-col-grid">
         <div class="glass-card" style="padding:36px 32px;">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
-            <span style="font-size:2rem;" id="admin-machine-icon">🌿</span>
+          <div style="display:flex;align-items:center;gap:14px;margin-bottom:26px;">
+            <span style="font-size:2.2rem;" id="admin-machine-icon">🌿</span>
             <div style="flex:1;">
-              <select id="admin-machine-selector" class="form-input" style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;color:var(--green-deep);" onchange="onAdminMachineChange()">
+              <select id="admin-machine-selector" class="form-input" style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;" onchange="onAdminMachineChange()">
                 <option value="Grass Cutter">Grass Cutter</option>
                 <option value="Harvester">Harvester 🌾</option>
                 <option value="Flip plow">Flip Plow 🔄</option>
                 <option value="Corn Planter">Corn Planter 🌽</option>
               </select>
-              <span class="badge" id="machine-avail-badge" style="margin-top:8px;">Available</span>
+              <div style="margin-top:8px;">
+                <span class="badge" id="machine-avail-badge">Available</span>
+              </div>
             </div>
           </div>
           <form id="machine-form" onsubmit="saveMachineConfig(event)" novalidate>
             <div class="machine-form-grid">
               <div>
                 <label class="form-label" for="cfg-rate">Rate per Acre (₹)</label>
-                <input class="form-input" type="number" id="cfg-rate" placeholder="e.g. 800" min="0" step="1" required>
+                <input class="form-input" type="number" id="cfg-rate" placeholder="e.g. 800" min="0" required>
               </div>
               <div>
                 <label class="form-label" for="cfg-cpkm">Cost per km (₹)</label>
-                <input class="form-input" type="number" id="cfg-cpkm" placeholder="e.g. 15" min="0" step="1" required>
+                <input class="form-input" type="number" id="cfg-cpkm" placeholder="e.g. 15" min="0" required>
               </div>
               <div>
                 <label class="form-label" for="cfg-petrol-km">Petrol Cost/km (₹)</label>
-                <input class="form-input" type="number" id="cfg-petrol-km" placeholder="e.g. 25" min="0" step="1" required>
+                <input class="form-input" type="number" id="cfg-petrol-km" placeholder="e.g. 25" min="0" required>
               </div>
               <div>
                 <label class="form-label" for="cfg-driver">Driver Cost (₹)</label>
-                <input class="form-input" type="number" id="cfg-driver" placeholder="e.g. 600" min="0" step="1" required>
+                <input class="form-input" type="number" id="cfg-driver" placeholder="e.g. 600" min="0" required>
               </div>
             </div>
-            <div style="margin-top:16px;margin-bottom:4px;">
+            <div style="margin-top:18px;">
               <label class="form-label" for="cfg-avail">Availability</label>
               <select class="form-input" id="cfg-avail">
                 <option value="Available">Available</option>
@@ -706,75 +617,73 @@
               </select>
             </div>
             <div id="machine-save-error" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 14px;border-radius:8px;font-size:13px;margin:12px 0;"></div>
-            <button type="submit" id="machine-save-btn" class="btn-primary" style="width:100%;margin-top:16px;font-size:15px;">Save Configuration</button>
+            <button type="submit" id="machine-save-btn" class="btn-primary" style="width:100%;margin-top:18px;font-size:15px;padding:13px;">Save Configuration</button>
           </form>
         </div>
-
-        <!-- Current Machine Rates -->
+        <!-- Current Rates -->
         <div>
-          <h3 style="font-family:'Syne',sans-serif;font-weight:700;font-size:17px;color:var(--green-deep);margin-bottom:16px;">Current Machine Rates</h3>
+          <h3 style="font-family:'Syne',sans-serif;font-weight:700;font-size:17px;color:var(--green-deep);margin-bottom:18px;">Current Machine Rates</h3>
           <div style="display:flex;flex-direction:column;gap:14px;">
             <div class="stat-card">
-              <div style="font-size:26px;font-weight:800;font-family:'Syne',sans-serif;color:var(--green-deep);" id="disp-rate">₹800</div>
-              <div style="font-size:13px;color:#6b7280;margin-top:4px;">Rate per Acre</div>
+              <div style="font-size:28px;font-weight:800;font-family:'Syne',sans-serif;color:var(--green-deep);" id="disp-rate">₹800</div>
+              <div style="font-size:13px;color:#6b7280;margin-top:6px;">Rate per Acre</div>
             </div>
             <div class="stat-card">
-              <div style="font-size:26px;font-weight:800;font-family:'Syne',sans-serif;color:var(--green-deep);" id="disp-cpkm">₹15</div>
-              <div style="font-size:13px;color:#6b7280;margin-top:4px;">Cost per km(₹)</div>
+              <div style="font-size:28px;font-weight:800;font-family:'Syne',sans-serif;color:var(--green-deep);" id="disp-cpkm">₹15</div>
+              <div style="font-size:13px;color:#6b7280;margin-top:6px;">Cost per km (₹)</div>
             </div>
             <div class="stat-card">
-              <div style="font-size:26px;font-weight:800;font-family:'Syne',sans-serif;color:var(--green-deep);" id="disp-petrol-km">₹25</div>
-              <div style="font-size:13px;color:#6b7280;margin-top:4px;">Petrol Cost per km</div>
+              <div style="font-size:28px;font-weight:800;font-family:'Syne',sans-serif;color:var(--green-deep);" id="disp-petrol-km">₹25</div>
+              <div style="font-size:13px;color:#6b7280;margin-top:6px;">Petrol Cost per km</div>
             </div>
             <div class="stat-card">
-              <div style="font-size:26px;font-weight:800;font-family:'Syne',sans-serif;color:var(--green-deep);" id="disp-driver">₹600</div>
-              <div style="font-size:13px;color:#6b7280;margin-top:4px;">Driver Cost</div>
+              <div style="font-size:28px;font-weight:800;font-family:'Syne',sans-serif;color:var(--green-deep);" id="disp-driver">₹600</div>
+              <div style="font-size:13px;color:#6b7280;margin-top:6px;">Driver Cost</div>
             </div>
           </div>
         </div>
       </div>
-      <!-- Hidden containers kept for JS compatibility -->
       <div id="admin-machine-container" style="display:none;"></div>
     </div>
 
-    <!-- ── Tab: Users ── -->
+    <!-- Users Tab -->
     <div id="adm-users" style="display:none;">
-      <div class="glass-card" style="padding:32px;">
-        <h2 style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;margin-bottom:20px;">Registered Users</h2>
+      <div class="glass-card" style="padding:36px 32px;">
+        <h2 style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;margin-bottom:22px;">Registered Users</h2>
         <div id="admin-users-list">
-          <div style="text-align:center;padding:48px 16px;color:#9ca3af;">
-            <div style="font-size:2.5rem;margin-bottom:12px;">👤</div>
-            <p>No users registered yet.</p>
+          <div style="text-align:center;padding:56px 16px;color:#9ca3af;">
+            <div style="font-size:3rem;margin-bottom:14px;">👤</div>
+            <p style="font-size:15px;">No users registered yet.</p>
           </div>
         </div>
         <div id="admin-users-container" style="display:none;"></div>
       </div>
     </div>
 
-    <!-- ── Tab: Bookings ── -->
+    <!-- Bookings Tab -->
     <div id="adm-bookings" style="display:none;">
-      <div class="glass-card" style="padding:32px;">
-        <h2 style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;margin-bottom:20px;">All Bookings</h2>
+      <div class="glass-card" style="padding:36px 32px;">
+        <h2 style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;margin-bottom:22px;">All Bookings</h2>
         <div id="admin-bookings-list">
-          <div style="text-align:center;padding:48px 16px;color:#9ca3af;">
-            <div style="font-size:2.5rem;margin-bottom:12px;">📭</div>
-            <p>No bookings yet.</p>
+          <div style="text-align:center;padding:56px 16px;color:#9ca3af;">
+            <div style="font-size:3rem;margin-bottom:14px;">📭</div>
+            <p style="font-size:15px;">No bookings yet.</p>
           </div>
         </div>
         <div id="admin-bookings-container" style="display:none;"></div>
       </div>
     </div>
 
-    <!-- ── Tab: Live Tracker (GPS) ── -->
+    <!-- Live Tracker Tab -->
     <div id="adm-tracker" style="display:none;">
-      <div class="glass-card" style="padding:32px;">
+      <div class="glass-card" style="padding:36px 32px;">
         <h2 style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;margin-bottom:6px;">📡 Live Fleet Map</h2>
-        <p style="font-size:13px;color:#6b7280;margin-bottom:4px;">🟢 Available &nbsp; 🔴 Busy &nbsp; 🟡 Maintenance &nbsp;—&nbsp; Auto-refreshes every 30s</p>
+        <p style="font-size:13px;color:#6b7280;margin-bottom:4px;">🟢 Available &nbsp; 🔴 Busy &nbsp; 🟡 Maintenance &nbsp;&mdash;&nbsp; Auto-refreshes every 30s</p>
         <div id="fleet-map"></div>
-        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-gps" onclick="refreshFleetMap()">🔄 Refresh Now</button>
         </div>
-        <div class="gps-panel" style="margin-top:16px;">
+        <div class="gps-panel">
           <h3>⚠️ Geofence Alerts
             <button class="btn-gps" style="float:right;" onclick="loadGeofenceAlerts()">Refresh</button>
           </h3>
@@ -782,83 +691,71 @@
         </div>
       </div>
     </div>
-
   </main>
-
-  <footer style="background:var(--green-deep);padding:32px 16px;text-align:center;margin-top:40px;">
+  <footer style="background:var(--green-deep);padding:36px 16px;text-align:center;margin-top:48px;">
     <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:#fff;">Agro<span style="color:var(--green-bright);">Book</span></span>
     <p style="color:rgba(255,255,255,0.5);font-size:13px;margin-top:8px;">© 2026 AgroBook. All rights reserved. Serving Kolar farmers.</p>
   </footer>
 </div>
 
-<!-- ================================================================
-     INLINE PATCH — fixes tab switching & session persistence
-================================================================ -->
+<!-- ============================================================
+     INLINE PATCHES: tab switcher + session persistence
+============================================================ -->
 <script>
-// ── Admin tab switcher (correct IDs matching this HTML) ──
 function switchAdminTab(tab) {
   ['machine','users','bookings','tracker'].forEach(t => {
-    const panel = document.getElementById('adm-' + t);
-    const btn   = document.getElementById('adm-tab-' + t);
-    if (panel) panel.style.display = (t === tab) ? '' : 'none';
-    if (btn)   btn.classList.toggle('active', t === tab);
+    const p = document.getElementById('adm-' + t);
+    const b = document.getElementById('adm-tab-' + t);
+    if (p) p.style.display = (t === tab) ? '' : 'none';
+    if (b) b.classList.toggle('active', t === tab);
   });
-  if (tab === 'machine')  { if(typeof renderAdminMachine === 'function') renderAdminMachine(); }
-  if (tab === 'users')    { if(typeof renderAdminUsers   === 'function') renderAdminUsers(); }
-  if (tab === 'bookings') { if(typeof renderAdminBookings=== 'function') renderAdminBookings(); }
-  if (tab === 'tracker')  { if(typeof refreshFleetMap   === 'function') setTimeout(refreshFleetMap,200); }
+  if (tab === 'machine')  { if(typeof renderAdminMachine  === 'function') renderAdminMachine(); }
+  if (tab === 'users')    { if(typeof renderAdminUsers    === 'function') renderAdminUsers(); }
+  if (tab === 'bookings') { if(typeof renderAdminBookings === 'function') renderAdminBookings(); }
+  if (tab === 'tracker')  { if(typeof refreshFleetMap    === 'function') setTimeout(refreshFleetMap, 200); }
 }
-
-// ── Session persistence across refresh ──
+function switchUserTab(tab) {
+  ['search','bookings'].forEach(t => {
+    const p = document.getElementById('udash-' + t);
+    const b = document.getElementById('udash-tab-' + t);
+    if (p) p.style.display = (t === tab) ? '' : 'none';
+    if (b) b.classList.toggle('active', t === tab);
+  });
+  if (tab === 'bookings' && typeof renderUserBookings === 'function') renderUserBookings();
+}
 (function restoreSession() {
   try {
     const sess = JSON.parse(sessionStorage.getItem('agrobook_session') || 'null');
     if (!sess) return;
     if (sess.isAdmin) {
-      document.addEventListener('DOMContentLoaded', () => {
-        // wait for script.js globals
-        setTimeout(() => {
-          if (typeof isAdmin !== 'undefined') { isAdmin = true; }
-          showPage('admin-dashboard');
-        }, 120);
-      });
+      window.addEventListener('load', () => setTimeout(() => {
+        if (typeof isAdmin !== 'undefined') isAdmin = true;
+        showPage('admin-dashboard');
+      }, 150));
     } else if (sess.user) {
-      document.addEventListener('DOMContentLoaded', () => {
-        setTimeout(() => {
-          if (typeof currentUser !== 'undefined') { currentUser = sess.user; }
-          const el = document.getElementById('dash-username');
-          if (el) el.textContent = '👤 ' + sess.user.user_name;
-          showPage('user-dashboard');
-        }, 120);
-      });
+      window.addEventListener('load', () => setTimeout(() => {
+        if (typeof currentUser !== 'undefined') currentUser = sess.user;
+        const el = document.getElementById('dash-username');
+        if (el) el.textContent = '👤 ' + sess.user.user_name;
+        showPage('user-dashboard');
+      }, 150));
     }
   } catch(e) { sessionStorage.removeItem('agrobook_session'); }
 })();
-
-// ── Patch logout to also clear session ──
-document.addEventListener('DOMContentLoaded', () => {
-  const origLogout = window.logout;
-  window.logout = function() {
-    sessionStorage.removeItem('agrobook_session');
-    if (typeof origLogout === 'function') origLogout();
-  };
-
-  // ── Patch handleLogin to save session ──
-  const origLogin = window.handleLogin;
+window.addEventListener('load', () => {
+  const oLogout = window.logout;
+  window.logout = function() { sessionStorage.removeItem('agrobook_session'); if(typeof oLogout==='function') oLogout(); };
+  const oLogin = window.handleLogin;
   window.handleLogin = async function(e) {
-    await origLogin.call(this, e);
-    if (typeof currentUser !== 'undefined' && currentUser) {
+    await oLogin.call(this, e);
+    if (typeof currentUser !== 'undefined' && currentUser)
       sessionStorage.setItem('agrobook_session', JSON.stringify({ user: currentUser }));
-    }
   };
-
-  // ── Patch handleAdminLogin to save session ──
-  const origAdminLogin = window.handleAdminLogin;
+  const oAdminLogin = window.handleAdminLogin;
   window.handleAdminLogin = async function(e) {
-    await origAdminLogin.call(this, e);
-    if (typeof isAdmin !== 'undefined' && isAdmin) {
+    await oAdminLogin.call(this, e);
+    if (typeof isAdmin !== 'undefined' && isAdmin)
       sessionStorage.setItem('agrobook_session', JSON.stringify({ isAdmin: true }));
-    }
   };
 });
 </script>
