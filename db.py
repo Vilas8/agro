@@ -5,15 +5,18 @@ import mysql.connector
 def get_db_connection():
     conn = mysql.connector.connect(
         host=os.getenv('MYSQL_HOST', 'localhost'),
+        port=int(os.getenv('MYSQL_PORT', 3306)),
         user=os.getenv('MYSQL_USER', 'root'),
         password=os.getenv('MYSQL_PASSWORD', ''),
-        database='mysql'
+        database=os.getenv('MYSQL_DATABASE', 'defaultdb'),
+        ssl_ca=os.getenv('MYSQL_SSL_CA', None),
+        ssl_disabled=os.getenv('MYSQL_SSL_DISABLED', 'false').lower() == 'true'
     )
     cursor = conn.cursor()
 
-    # Create agrimachine DB
+    # Create agrimachine DB if not exists, then switch to it
     cursor.execute('CREATE DATABASE IF NOT EXISTS agrimachine')
-    conn.database = 'agrimachine'
+    cursor.execute('USE agrimachine')
 
     # Users table
     cursor.execute("""
@@ -70,7 +73,7 @@ def get_db_connection():
     )
     """)
 
-    # GPS machine_locations table — stores every ping from GPS hardware
+    # GPS machine_locations table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS machine_locations (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -88,7 +91,7 @@ def get_db_connection():
     )
     """)
 
-    # GPS geofence_alerts table — records every boundary violation
+    # GPS geofence_alerts table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS geofence_alerts (
         id INT AUTO_INCREMENT PRIMARY KEY,
