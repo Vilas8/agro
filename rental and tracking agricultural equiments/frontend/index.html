@@ -1,567 +1,230 @@
-<!doctype html>
-<html lang="en" class="h-full">
- <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AgroBook – Grass Cutter Booking</title>
-  <!-- Local SDK Polyfills - Replaces missing BLACKBOX SDKs -->
-  <script>
-    // Polyfill dataSdk for local development
-    window.dataSdk = {
-      data: (() => {
-        try {
-          const parsed = JSON.parse(localStorage.getItem('agrobook_data') || '[]');
-          return Array.isArray(parsed) ? parsed : [];
-        } catch (e) {
-          console.warn('Corrupted localStorage, resetting:', e);
-          return [];
-        }
-      })(),
-      init(handler) {
-        if (!Array.isArray(this.data)) this.data = [];
-        this.handler = handler;
-        this.handler.onDataChanged(this.data);
-        return { isOk: true };
-      },
-      async create(record) {
-        if (!Array.isArray(this.data)) this.data = [];
-        record.__backendId = 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-        record.id = record.__backendId;
-        this.data.unshift(record);
-        localStorage.setItem('agrobook_data', JSON.stringify(this.data));
-        this.handler?.onDataChanged(this.data);
-        return { isOk: true };
-      },
-      async update(record) {
-        if (!Array.isArray(this.data)) this.data = [];
-        const index = this.data.findIndex(r => r.__backendId === record.__backendId);
-        if (index > -1) {
-          this.data[index] = record;
-          localStorage.setItem('agrobook_data', JSON.stringify(this.data));
-          this.handler?.onDataChanged(this.data);
-          return { isOk: true };
-        }
-        return { isOk: false };
-      },
-      async delete(record) {
-        if (!Array.isArray(this.data)) this.data = [];
-        this.data = this.data.filter(r => r.__backendId !== record.__backendId);
-        localStorage.setItem('agrobook_data', JSON.stringify(this.data));
-        this.handler?.onDataChanged(this.data);
-        return { isOk: true };
-      }
-    };
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgroBook — Agricultural Equipment Rental</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Leaflet.js for GPS maps -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Lucide icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    /* ===== GPS / Fleet Map styles ===== */
+    #fleet-map { height: 380px; border-radius: 10px; margin: 1rem 0; border: 1px solid #e5e7eb; }
+    .gps-panel { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 1rem; margin-top: 1rem; }
+    .gps-panel h3 { margin: 0 0 0.75rem; color: #15803d; font-size: 1rem; }
+    .alert-badge { display: inline-block; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-radius: 6px; padding: 0.2rem 0.6rem; font-size: 0.75rem; font-weight: 600; }
+    .btn-gps { background: #16a34a; color: #fff; border: none; border-radius: 8px; padding: 0.5rem 1rem; cursor: pointer; font-size: 0.85rem; margin-right: 0.5rem; }
+    .btn-gps:hover { background: #15803d; }
+  </style>
+</head>
+<body>
+<div id="toast" class="toast"></div>
 
-    // Polyfill elementSdk  
-    window.elementSdk = {
-      init(config) {
-        this.config = config.defaultConfig;
-        config.onConfigChange(this.config);
-      }
-    };
-  </script>
-  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-  <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
-  <script defer src="script.js"></script>
- </head>
- <body class="h-full">
-  <!-- ===== TOAST ===== -->
-  <div id="toast" class="toast" role="alert" aria-live="polite"></div>
-  <!-- ===== PAGE: HOME ===== -->
-  <div id="page-home" class="page active fade-in">
-   <!-- Notification Bar -->
-   <div class="notif-bar" aria-label="Notifications">
-    <span class="notif-track" id="notif-text"> Agri-Machines now available in Kolar! &nbsp;&nbsp;|&nbsp;&nbsp; 🚜 Book your slot today and get priority scheduling &nbsp;&nbsp;|&nbsp;&nbsp; 📞 Call us: +91 81470 32767 &nbsp;&nbsp;|&nbsp;&nbsp; ✅ Trusted by 500+ farmers in Kolar district &nbsp;&nbsp;|&nbsp;&nbsp; 💰 Transparent pricing, no hidden charges </span>
-   </div><!-- Navbar -->
-   <nav class="navbar" role="navigation" aria-label="Main navigation">
-    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-     <div class="flex items-center gap-3">
-      <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:var(--green-bright)">
-       <svg width="20" height="20" viewbox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
-       </svg>
-      </div><span style="font-family:'Syne',sans-serif; font-weight:800; font-size:20px; color:var(--green-deep);">Agro<span style="color:var(--green-bright)">Book <br> Renting and Tracking</span> </span>
-     </div>
-     <div class="flex items-center gap-1 md:gap-2">
-<button onclick="safeShowPage('home')" class="tab-btn active" id="nav-home">Home</button> <button onclick="safeShowPage('about')" class="tab-btn" id="nav-about">About Us</button>
-      <div class="dropdown relative">
-       <button class="tab-btn flex items-center gap-1" id="nav-rent">Rent Vendor <i data-lucide="chevron-down" style="width:14px;height:14px"></i></button>
-       <div class="dropdown-menu">
-        <a href="#" onclick="safeShowPage('user-login'); return false;">👤 User</a> <a href="#" onclick="safeShowPage('admin-login'); return false;">🛠️ Admin</a>
-       </div>
-      </div>
-     </div>
-    </div>
-   </nav><!-- Hero -->
-   <section class="hero-bg py-20 px-4 text-white relative" role="banner">
-    <div class="max-w-6xl mx-auto flex flex-col md:flex-row items-center gap-12 relative z-10">
-     <div class="flex-1">
-      <span class="badge mb-5" style="background:rgba(76,175,80,0.2);color:#a7f3d0;border-color:rgba(76,175,80,0.3)">📍 Serving Kolar District</span>
-      <h1 id="hero-title-el" style="font-size:clamp(32px,5vw,56px); font-weight:800; line-height:1.1; margin-bottom:20px;">Smart Farming<br>
-        Starts <span style="color:var(--gold)">Here</span></h1>
-      <p id="hero-subtitle-el" style="font-size:17px; opacity:0.85; line-height:1.7; margin-bottom:32px; max-width:480px;">Book your machines in minutes. Transparent pricing, real-time availability, and hassle-free booking for Kolar farmers.</p>
-      <div class="flex gap-3 flex-wrap">
-<button onclick="safeShowPage('about')" class="btn-outline" style="color:#a7f3d0; border-color:rgba(167,243,208,0.5)">Learn More</button>
-      </div>
-     </div>
-     <div class="flex-shrink-0">
-      <div style="width:260px;height:260px;background:rgba(255,255,255,0.08);border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid rgba(255,255,255,0.15)">
-       <div style="width:210px;height:210px;background:rgba(76,175,80,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;">
-        <span style="font-size:90px">🌿</span>
-       </div>
-      </div>
-     </div>
-    </div>
-   </section><!-- How It Works -->
-   <section class="py-16 px-4" style="background:#fff;" role="region" aria-labelledby="how-title">
-    <div class="max-w-5xl mx-auto text-center mb-10">
-     <span class="badge mb-3">Simple Process</span>
-     <h2 id="how-title" class="section-title">How It Works</h2>
-    </div>
-    <div class="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
-     <div class="text-center p-6">
-      <div class="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center text-3xl" style="background:#f0fdf4;">
-       📝
-      </div>
-      <h3 style="font-family:'Syne',sans-serif;font-weight:700;margin-bottom:8px;font-size:17px;">Register & Login</h3>
-      <p style="color:#6b7280;font-size:14px;line-height:1.6;">Create your free account and login to access the booking dashboard.</p>
-     </div>
-     <div class="text-center p-6">
-      <div class="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center text-3xl" style="background:#f0fdf4;">
-       🔍
-      </div>
-      <h3 style="font-family:'Syne',sans-serif;font-weight:700;margin-bottom:8px;font-size:17px;">Search & Calculate</h3>
-      <p style="color:#6b7280;font-size:14px;line-height:1.6;">Enter your crop type and acres. Get instant cost breakdown and estimated time.</p>
-     </div>
-     <div class="text-center p-6">
-      <div class="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center text-3xl" style="background:#f0fdf4;">
-       ✅
-      </div>
-      <h3 style="font-family:'Syne',sans-serif;font-weight:700;margin-bottom:8px;font-size:17px;">Book & Track</h3>
-      <p style="color:#6b7280;font-size:14px;line-height:1.6;">Confirm your booking and track the machines in real time.</p>
-     </div>
-    </div>
-   </section><!-- Footer -->
-   <footer style="background:var(--green-deep); padding: 28px 16px; text-align:center;" role="contentinfo">
-    <div class="max-w-6xl mx-auto">
-     <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#fff;">Agro<span style="color:var(--green-bright)">Book</span></span>
-     <p id="footer-text-el" style="color:rgba(255,255,255,0.55);font-size:13px;margin-top:8px;">© 2026 AgroBook. All rights reserved. Serving Kolar farmers.</p>
-    </div>
-   </footer>
-  </div><!-- ===== PAGE: ABOUT ===== -->
-<div id="page-about" class="page fade-in">
-   <!-- Notification Bar -->
-   <div class="notif-bar"><span class="notif-track">🌾 Grass Cutter now available in Kolar! | 📞 Call us: +91 98765 43210 | ✅ Trusted by 500+ farmers</span>
-   </div><!-- Navbar -->
-   <nav class="navbar" role="navigation" aria-label="Main navigation">
-    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-     <div class="flex items-center gap-3">
-      <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:var(--green-bright)">
-       <svg width="20" height="20" viewbox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
-       </svg>
-      </div><span style="font-family:'Syne',sans-serif; font-weight:800; font-size:20px; color:var(--green-deep);">Agro<span style="color:var(--green-bright)">Book <br> Renting and Tracking</span></span>
-     </div>
-     <div class="flex items-center gap-1 md:gap-2">
-<button onclick="safeShowPage('home')" class="tab-btn" id="nav-home">Home</button> <button onclick="safeShowPage('about')" class="tab-btn active" id="nav-about">About Us</button>
-      <div class="dropdown relative">
-       <button class="tab-btn flex items-center gap-1" id="nav-rent">Rent Vendor <i data-lucide="chevron-down" style="width:14px;height:14px"></i></button>
-      <div class="dropdown-menu">
-        <a href="#" onclick="safeShowPage('user-login'); return false;">👤 User</a> <a href="#" onclick="safeShowPage('admin-login'); return false;">🛠️ Admin</a>
-       </div>
-      </div>
-     </div>
-    </div>
-   </nav>
-   <main class="max-w-3xl mx-auto px-4 py-16" role="main">
-    <div class="text-center mb-10">
-     <span class="badge mb-3">Get In Touch</span>
-     <h1 class="section-title mb-3">About Us</h1>
-     <p style="color:#6b7280;font-size:16px;line-height:1.7;">AgroBook connects Kolar farmers with quality machines for efficient, affordable farming.</p>
-    </div>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
-     <div class="glass-card p-7 text-center flex flex-col items-center gap-3">
-      <div class="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl" style="background:#f0fdf4;">
-       📞
-      </div>
-      <h2 style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;">Phone</h2><a href="tel:+919876543210" style="color:var(--green-mid);font-weight:600;font-size:15px;">+91 8147032767</a>
-      <p style="font-size:12px;color:#9ca3af;">Mon–Sun, 24hrs</p>
-     </div>
-     <div class="glass-card p-7 text-center flex flex-col items-center gap-3">
-      <div class="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl" style="background:#f0fdf4;">
-       ✉️
-      </div>
-      <h2 style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;">Email</h2><a href="mailto:info@agrobook.in" style="color:var(--green-mid);font-weight:600;font-size:15px;">swathigowda925@gmail.com</a>
-      <p style="font-size:12px;color:#9ca3af;">Reply within 24 hours</p>
-     </div>
-     <div class="glass-card p-7 text-center flex flex-col items-center gap-3">
-      <div class="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl" style="background:#f0fdf4;">
-       📍
-      </div>
-      <h2 style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;">Address</h2>
-      <p style="color:var(--green-mid);font-weight:600;font-size:15px;line-height:1.5;">AgroBook Office,<br>
-        Kolar, Karnataka – 563101</p>
-     </div>
-    </div>
-    <div class="text-center mt-10">
-<button onclick="safeShowPage('home')" class="btn-outline">← Back to Home</button>
-    </div>
-   </main>
-   <footer style="background:var(--green-deep); padding: 28px 16px; text-align:center;" role="contentinfo">
-    <div class="max-w-6xl mx-auto">
-     <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#fff;">Agro<span style="color:var(--green-bright)">Book</span></span>
-     <p id="footer-text-el" style="color:rgba(255,255,255,0.55);font-size:13px;margin-top:8px;">© 2026 AgroBook. All rights reserved. Serving Kolar farmers.</p>
-    </div>
-   </footer>
-  </div><!-- ===== PAGE: USER REGISTER ===== -->
-  <div id="page-user-register" class="page fade-in">
-   <div style="min-height:100%;background:linear-gradient(135deg,#f0fdf4,#dcfce7);display:flex;align-items:center;justify-content:center;padding:32px 16px;">
-    <div class="glass-card p-8 w-full max-w-md">
-     <div class="text-center mb-7">
-      <div class="w-14 h-14 rounded-2xl mx-auto mb-3 flex items-center justify-center text-3xl" style="background:#f0fdf4;">
-       🌱
-      </div>
-      <h1 style="font-family:'Syne',sans-serif;font-weight:800;font-size:24px;">Create Account</h1>
-      <p style="color:#6b7280;font-size:14px;margin-top:4px;">Register to book your Grass Cutter</p>
-     </div>
-     <form id="register-form" onsubmit="handleRegister(event)" novalidate>
-      <div class="mb-4">
-       <label class="form-label" for="reg-name">Full Name</label> <input class="form-input" type="text" id="reg-name" placeholder="Enter your full name" required autocomplete="name">
-      </div>
-      <div class="mb-4">
-       <label class="form-label" for="reg-email">Email Address</label> <input class="form-input" type="email" id="reg-email" placeholder="you@example.com" required autocomplete="email">
-      </div>
-      <div class="mb-4">
-       <label class="form-label" for="reg-phone">Phone Number</label> <input class="form-input" type="tel" id="reg-phone" placeholder="+91 XXXXX XXXXX" required autocomplete="tel">
-      </div>
-      <div class="mb-6">
-       <label class="form-label" for="reg-pass">Password</label>
-       <div style="position:relative;">
-        <input class="form-input" type="password" id="reg-pass" placeholder="Create a strong password" required autocomplete="new-password" oninput="checkPasswordStrength(this.value, 'reg-pass-strength')"> <button type="button" onclick="togglePassVis('reg-pass')" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#6b7280;"> <i data-lucide="eye" id="reg-pass-icon" style="width:18px;height:18px;"></i> </button>
-       </div>
-       <div id="reg-pass-strength" style="font-size:12px;margin-top:6px;"></div>
-      </div>
-      <div id="reg-error" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;"></div><button type="submit" class="btn-primary w-full text-base" id="reg-btn" style="width:100%">Create Account</button>
-     <button type="button" onclick="safeShowPage('user-login')" style="color:var(--green-mid);font-weight:600;background:none;border:none;cursor:pointer;">Sign In</button>
-      <p style="text-align:center;margin-top:8px;font-size:13px;"><button type="button" onclick="safeShowPage('home')" style="color:#9ca3af;background:none;border:none;cursor:pointer;">← Back to Home</button></p>
-     </form>
-    </div>
-   </div>
-   <footer style="background:var(--green-deep); padding: 28px 16px; text-align:center;" role="contentinfo">
-    <div class="max-w-6xl mx-auto">
-     <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#fff;">Agro<span style="color:var(--green-bright)">Book</span></span>
-     <p id="footer-text-el" style="color:rgba(255,255,255,0.55);font-size:13px;margin-top:8px;">© 2026 AgroBook. All rights reserved. Serving Kolar farmers.</p>
-    </div>
-   </footer>
-
-  </div><!-- ===== PAGE: USER LOGIN ===== -->
-  <div id="page-user-login" class="page fade-in">
-   <div style="min-height:100%;background:linear-gradient(135deg,#f0fdf4,#dcfce7);display:flex;align-items:center;justify-content:center;padding:32px 16px;">
-    <div class="glass-card p-8 w-full max-w-md">
-     <div class="text-center mb-7">
-      <div class="w-14 h-14 rounded-2xl mx-auto mb-3 flex items-center justify-center text-3xl" style="background:#f0fdf4;">
-       🔐
-      </div>
-      <h1 style="font-family:'Syne',sans-serif;font-weight:800;font-size:24px;">User Login</h1>
-      <p style="color:#6b7280;font-size:14px;margin-top:4px;">Welcome back, farmer!</p>
-     </div>
-     <form id="login-form" onsubmit="handleLogin(event)" novalidate>
-      <div class="mb-4">
-       <label class="form-label" for="login-email">Email Address</label> <input class="form-input" type="email" id="login-email" placeholder="you@example.com" required autocomplete="email">
-      </div>
-      <div class="mb-6">
-       <label class="form-label" for="login-pass">Password</label>
-       <div style="position:relative;">
-        <input class="form-input" type="password" id="login-pass" placeholder="Your password" required autocomplete="current-password"> <button type="button" onclick="togglePassVis('login-pass')" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#6b7280;"> <i data-lucide="eye" id="login-pass-icon" style="width:18px;height:18px;"></i> </button>
-       </div>
-      </div>
-      <div id="login-error" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;"></div><button type="submit" class="btn-primary w-full text-base" id="login-btn" style="width:100%">Login</button>
-      <p style="text-align:center;margin-top:16px;font-size:14px;color:#6b7280;">No account? <button type="button" onclick="safeShowPage('user-register')" style="color:var(--green-mid);font-weight:600;background:none;border:none;cursor:pointer;">Register</button></p>
-      <p style="text-align:center;margin-top:8px;font-size:13px;"><button type="button" onclick="safeShowPage('home')" style="color:#9ca3af;background:none;border:none;cursor:pointer;">← Back to Home</button></p>
-     </form>
-    </div>
-   </div>
-   <footer style="background:var(--green-deep); padding: 28px 16px; text-align:center;" role="contentinfo">
-    <div class="max-w-6xl mx-auto">
-     <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#fff;">Agro<span style="color:var(--green-bright)">Book</span></span>
-     <p id="footer-text-el" style="color:rgba(255,255,255,0.55);font-size:13px;margin-top:8px;">© 2026 AgroBook. All rights reserved. Serving Kolar farmers.</p>
-    </div>
-   </footer>
-  </div><!-- ===== PAGE: ADMIN LOGIN ===== -->
-  <div id="page-admin-login" class="page fade-in">
-   <div style="min-height:100%;background:linear-gradient(135deg,#0f2a0f,#1a5c1a);display:flex;align-items:center;justify-content:center;padding:32px 16px;">
-    <div class="glass-card p-8 w-full max-w-md">
-     <div class="text-center mb-7">
-      <div class="w-14 h-14 rounded-2xl mx-auto mb-3 flex items-center justify-center text-3xl" style="background:#f0fdf4;">
-       🛠️
-      </div>
-      <h1 style="font-family:'Syne',sans-serif;font-weight:800;font-size:24px;">Admin Login</h1>
-      <p style="color:#6b7280;font-size:14px;margin-top:4px;">Restricted access – Admins only</p>
-     </div>
-     <form id="admin-login-form" onsubmit="handleAdminLogin(event)" novalidate>
-      <div class="mb-4">
-       <label class="form-label" for="admin-email">Admin Email</label> <input class="form-input" type="email" id="admin-email" placeholder="admin email" required autocomplete="email">
-      </div>
-      <div class="mb-6">
-       <label class="form-label" for="admin-pass">Password</label>
-       <div style="position:relative;">
-        <input class="form-input" type="password" id="admin-pass" placeholder="Admin password" required autocomplete="current-password"> <button type="button" onclick="togglePassVis('admin-pass')" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#6b7280;"> <i data-lucide="eye" id="admin-pass-icon" style="width:18px;height:18px;"></i> </button>
-       </div>
-      </div>
-      <div id="admin-login-error" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;"></div><button type="submit" class="btn-primary w-full text-base" id="admin-login-btn" style="width:100%">Admin Login</button>
-      <p style="text-align:center;margin-top:12px;font-size:13px;"><button type="button" onclick="safeShowPage('home')" style="color:#9ca3af;background:none;border:none;cursor:pointer;">← Back to Home</button></p>
-     </form>
-    </div>
-   </div>
-   <footer style="background:var(--green-deep); padding: 28px 16px; text-align:center;" role="contentinfo">
-    <div class="max-w-6xl mx-auto">
-     <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#fff;">Agro<span style="color:var(--green-bright)">Book</span></span>
-     <p id="footer-text-el" style="color:rgba(255,255,255,0.55);font-size:13px;margin-top:8px;">© 2026 AgroBook. All rights reserved. Serving Kolar farmers.</p>
-    </div>
-   </footer>
-  </div><!-- ===== PAGE: USER DASHBOARD ===== -->
-  <div id="page-user-dashboard" class="page fade-in">
-   <!-- Notification Bar -->
-   <div class="notif-bar"><span class="notif-track">🌾 Book your Grass Cutter today! | 📍 Service area: Kolar | ✅ Transparent pricing</span>
-   </div><!-- Navbar -->
-   <nav class="navbar" role="navigation" aria-label="Dashboard navigation">
-    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-     <button onclick="safeShowPage('home')" style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:var(--green-deep);background:none;border:none;cursor:pointer;">Agro<span style="color:var(--green-bright)">Book <br> Renting and Tracking</span></button>
-     <div class="flex items-center gap-3">
-      <span id="dash-username" style="font-size:14px;color:#4b5563;font-weight:500;"></span> <button onclick="logout()" class="btn-outline text-sm py-2 px-4" style="color:#ef4444;border-color:#ef4444;">Logout</button>
-     </div>
-    </div>
-   </nav>
-   <main class="max-w-6xl mx-auto px-4 py-10" role="main">
-    <!-- Dashboard Tabs -->
-    <div class="flex gap-2 mb-8 flex-wrap">
-     <button class="tab-btn active" id="udash-tab-search" onclick="switchUserTab('search')">🔍 Search & Book</button> <button class="tab-btn" id="udash-tab-bookings" onclick="switchUserTab('bookings')">📋 My Bookings</button>
-    </div><!-- Tab: Search -->
-    <div id="udash-search" class="">
-     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-      <!-- Search Form -->
-      <div class="glass-card p-8">
-       <h2 style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;margin-bottom:6px;">Book</h2>
-       <p style="color:#6b7280;font-size:14px;margin-bottom:24px;">Select your location and enter crop details</p>
-       <form id="search-form" onsubmit="calculateCost(event)" novalidate>
-        <div class="mb-5">
-         <label class="form-label" for="select-district">District</label> <select class="form-input" id="select-district" required onchange="updateVillageOptions()"> <option value="">Select district</option> </select>
-        </div>
-        <div class="mb-5">
-         <label class="form-label" for="select-village">Village</label> <select class="form-input" id="select-village" required> <option value="">Select village</option> <option value="Bangarpet">Bangarpet</option> </select>
-        </div>
-        <div class="mb-5">
-         <label class="form-label" for="machine-type">Machine Type</label> <select class="form-input" id="machine-type" required> <option value="">Select machine type</option> <option value="Grass Cutter">Grass Cutter</option> <option value="Harvester">Harvester</option> <option value="Flip plow">Flip plow</option> <option value="Corn Planter">Corn Planter</option> <option value="other">other</option> </select>
-        </div>
-        <div class="mb-5">
-         <label class="form-label" for="crop-type">Crop Type</label> <select class="form-input" id="crop-type" required> <option value="">Select crop type</option> <option value="Paddy">Paddy</option> <option value="Wheat">Wheat</option> <option value="Sugarcane">Sugarcane</option> <option value="Corn/Maize">Corn / Maize</option> <option value="Jowar">Jowar</option> <option value="Ragi">Ragi</option> <option value="Other">Other</option> </select>
-        </div>
-        <div class="mb-5">
-         <label class="form-label" for="num-acres">Number of Acres</label> <input class="form-input" type="number" id="num-acres" placeholder="e.g. 5" min="0.5" step="0.5" required>
-        </div>
-        <div class="mb-5">
-         <label class="form-label" for="distance-km">Distance from Base (km)</label> <input class="form-input" type="number" id="distance-km" placeholder="e.g. 10" min="1" step="1" required>
-        </div>
-        <div id="search-error" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;"></div><button type="submit" class="btn-primary w-full text-base" style="width:100%">Calculate Cost</button>
-       </form>
-      </div><!-- Results Card -->
-      <div id="result-card" style="display:none;">
-       <div class="glass-card p-8 h-full flex flex-col">
-<h2 style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;margin-bottom:6px;" id="res-machine-title">Cost Breakdown</h2>
-        <p style="color:#6b7280;font-size:14px;margin-bottom:20px;">Estimated pricing for your booking</p><!-- Machine Info -->
-<div style="background:#f0fdf4;border-radius:12px;padding:14px 16px;margin-bottom:12px;display:flex;gap:12px;align-items:center;">
-         <span style="font-size:28px;" id="res-machine-icon">🚜</span>
-         <div>
-          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;" id="res-machine">
-           Grass Cutter
-          </div>
-          <div style="font-size:13px;color:#6b7280;">
-           📍 Kolar | <span id="res-crop"></span> | <span id="res-acres"></span> acres
-          </div>
-         </div>
-        </div>
-        <!-- Machine Status Badge -->
-        <div id="res-machine-status" style="display:none; margin-bottom:16px;">
-         <span class="badge machine-status-available" id="res-status-text">Available</span>
-        </div>
-        <!-- Unavailable Warning -->
-        <div id="res-unavailable-warning" style="display:none; background:#fee2e2; color:#991b1b; padding:14px 16px; border-radius:10px; border-left:4px solid #ef4444; margin-bottom:16px;">
-         <div style="font-weight:600; font-size:15px; margin-bottom:6px;" id="res-warning-title">⚠️ Grass Cutter Unavailable</div>
-         <div style="font-size:14px; line-height:1.5;" id="res-warning-text">This machine is currently busy or under maintenance. Please try another machine or check back later.</div>
-        </div>
-        <div class="flex flex-col gap-2 mb-4 flex-1">
-         <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#fafafa;border-radius:8px;">
-          <span style="font-size:14px;color:#4b5563;">Machine Cost <span style="font-size:11px;color:#9ca3af;">(acres × rate)</span></span> <span style="font-weight:700;font-family:'Syne',sans-serif;" id="res-machine-cost">—</span>
-         </div>
-         <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#fafafa;border-radius:8px;">
-          <span style="font-size:14px;color:#4b5563;">Travel Cost <span style="font-size:11px;color:#9ca3af;">(dist × cost/km)</span></span> <span style="font-weight:700;font-family:'Syne',sans-serif;" id="res-travel-cost">—</span>
-         </div>
-         <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#fafafa;border-radius:8px;">
-
-         </div>
-         <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#fafafa;border-radius:8px;">
-          <span style="font-size:14px;color:#4b5563;">Driver Cost</span> <span style="font-weight:700;font-family:'Syne',sans-serif;" id="res-driver-cost">—</span>
-         </div>
-         <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--green-deep);border-radius:10px;margin-top:4px;">
-          <span style="font-size:15px;color:#fff;font-family:'Syne',sans-serif;font-weight:700;">Total Cost</span> <span style="font-weight:800;font-family:'Syne',sans-serif;font-size:20px;color:var(--gold);" id="res-total">—</span>
-         </div>
-        </div><!-- Time -->
-        <div style="background:#f0fdf4;border-radius:10px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-         <span style="font-size:14px;color:#4b5563;">⏱️ Estimated Time</span> <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--green-mid);" id="res-time">—</span>
-        </div>
-<button id="book-btn" onclick="confirmBooking()" class="btn-gold w-full text-base" style="width:100%; display:block;">✅ Confirm Booking</button>
-       </div>
-      </div>
-     </div>
-    </div><!-- Tab: My Bookings -->
-    <div id="udash-bookings" style="display:none;">
-     <div class="glass-card p-6">
-      <h2 style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;margin-bottom:16px;">My Bookings</h2>
-      <div id="user-bookings-list">
-       <div style="text-align:center;padding:40px;color:#9ca3af;">
-        <div style="font-size:40px;margin-bottom:12px;">
-         📭
-        </div>
-        <p>No bookings yet. Search and book a Grass Cutter above!</p>
-       </div>
-      </div>
-     </div>
-    </div>
-   </main>
-   <footer style="background:var(--green-deep); padding: 28px 16px; text-align:center;" role="contentinfo">
-    <div class="max-w-6xl mx-auto">
-     <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#fff;">Agro<span style="color:var(--green-bright)">Book</span></span>
-     <p id="footer-text-el" style="color:rgba(255,255,255,0.55);font-size:13px;margin-top:8px;">© 2026 AgroBook. All rights reserved. Serving Kolar farmers.</p>
-    </div>
-   </footer>
-  </div><!-- ===== PAGE: ADMIN DASHBOARD ===== -->
-  <div id="page-admin-dashboard" class="page fade-in">
-   <div class="notif-bar"><span class="notif-track">🛠️ Admin Dashboard – AgroBook | Manage machines, users, and bookings from one place</span>
-   </div>
-   <nav class="navbar" role="navigation" aria-label="Admin navigation">
-    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-     <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:var(--green-deep);">Agro<span style="color:var(--green-bright)">Book <br> Renting and Tracking</span> <span style="font-size:13px;font-weight:500;color:#6b7280;">[Admin]</span></span> <button onclick="logout()" class="btn-outline text-sm py-2 px-4" style="color:#ef4444;border-color:#ef4444;">Logout</button>
-    </div>
-   </nav>
-   <main class="max-w-6xl mx-auto px-4 py-8" role="main">
-    <!-- Admin Tabs -->
-    <div class="flex gap-2 mb-8 flex-wrap">
-     <button class="tab-btn active" id="adm-tab-machine" onclick="switchAdminTab('machine')">🚜 Machines</button>
-     <button class="tab-btn" id="adm-tab-users" onclick="switchAdminTab('users')">👤 Users</button>
-     <button class="tab-btn" id="adm-tab-bookings" onclick="switchAdminTab('bookings')">📋 Bookings</button>
-    </div>
-    <div id="adm-machine">
-     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-      <div class="glass-card p-8">
-<div class="flex items-center gap-3 mb-6">
-        <span style="font-size:28px;" id="admin-machine-icon">🚜</span>
-        <div>
-         <select id="admin-machine-selector" class="form-input text-sm" style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;color:var(--green-deep);max-width:220px;">
-          <option value="Grass Cutter">Grass Cutter</option>
-          <option value="Harvester">Harvester 🌾</option>
-          <option value="Flip plow">Flip Plow 🔄</option>
-          <option value="Corn Planter">Corn Planter 🌽</option>
-         </select>
-         <span id="machine-avail-badge" class="badge ml-2">Available</span>
-        </div>
-       </div>
-       <form id="machine-form" onsubmit="saveMachineConfig(event)" novalidate>
-        <div class="grid grid-cols-2 gap-4">
-         <div class="mb-4">
-          <label class="form-label" for="cfg-rate">Rate per Acre (₹)</label> <input class="form-input" type="number" id="cfg-rate" placeholder="e.g. 800" min="0" step="1" required>
-         </div>
-         <div class="mb-4">
-          <label class="form-label" for="cfg-cpkm">Cost per km (₹)</label> <input class="form-input" type="number" id="cfg-cpkm" placeholder="e.g. 15" min="0" step="1" required>
-         </div>
-
-         <div class="mb-4">
-          <label class="form-label" for="cfg-petrol-km">Petrol Cost per km (₹)</label> <input class="form-input" type="number" id="cfg-petrol-km" placeholder="e.g. 25" min="0" step="1" required>
-         </div>
-         <div class="mb-4">
-          <label class="form-label" for="cfg-driver">Driver Cost (₹)</label> <input class="form-input" type="number" id="cfg-driver" placeholder="e.g. 600" min="0" step="1" required>
-         </div>
-
-        </div>
-        <div class="mb-5">
-         <label class="form-label" for="cfg-avail">Availability</label> <select class="form-input" id="cfg-avail"> <option value="Available">Available</option> <option value="Busy">Busy</option> <option value="Maintenance">Maintenance</option> </select>
-        </div>
-        <div id="machine-save-error" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;"></div><button type="submit" id="machine-save-btn" class="btn-primary w-full" style="width:100%">Save Configuration</button>
-       </form>
-      </div>
-      <div class="flex flex-col gap-4">
-       <h3 style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;color:#4b5563;">Current Machine Rates</h3>
-       <div class="stat-card">
-        <div style="font-size:22px;font-weight:800;font-family:'Syne',sans-serif;color:var(--green-deep);" id="disp-rate">
-         ₹800
-        </div>
-        <div style="font-size:13px;color:#6b7280;">
-         Rate per Acre
-        </div>
-       </div>
-       <div class="stat-card">
-        <div style="font-size:22px;font-weight:800;font-family:'Syne',sans-serif;color:var(--green-deep);" id="disp-cpkm">
-         ₹15
-        </div>
-        <div style="font-size:13px;color:#6b7280;">
-         Cost per km(₹)
-        </div>
-
-       </div>
-
-       <div class="stat-card">
-        <div style="font-size:22px;font-weight:800;font-family:'Syne',sans-serif;color:var(--green-deep);" id="disp-petrol-km">
-         ₹25
-        </div>
-        <div style="font-size:13px;color:#6b7280;">
-         Petrol Cost per km
-        </div>
-       </div>
-       <div class="stat-card">
-        <div style="font-size:22px;font-weight:800;font-family:'Syne',sans-serif;color:var(--green-deep);" id="disp-driver">
-         ₹600
-        </div>
-        <div style="font-size:13px;color:#6b7280;">
-         Driver Cost
-        </div>
-       </div>
-      </div>
-     </div>
-    </div><!-- Tab: Location Management -->
-
-    <div id="adm-users" style="display:none;">
-     <div class="glass-card p-6">
-      <h2 style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;margin-bottom:16px;">Registered Users</h2>
-      <div id="admin-users-list">
-       <div style="text-align:center;padding:40px;color:#9ca3af;">
-        <div style="font-size:40px;margin-bottom:12px;">
-         👤
-        </div>
-        <p>No users registered yet.</p>
-       </div>
-      </div>
-     </div>
-    </div><!-- Tab: Bookings -->
-    <div id="adm-bookings" style="display:none;">
-     <div class="glass-card p-6">
-      <h2 style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;margin-bottom:16px;">All Bookings</h2>
-      <div id="admin-bookings-list">
-       <div style="text-align:center;padding:40px;color:#9ca3af;">
-        <div style="font-size:40px;margin-bottom:12px;">
-         📭
-        </div>
-        <p>No bookings yet.</p>
-       </div>
-      </div>
-     </div>
-    </div>
-   </main>
-   <footer style="background:var(--green-deep); padding: 28px 16px; text-align:center;" role="contentinfo">
-    <div class="max-w-6xl mx-auto">
-     <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#fff;">Agro<span style="color:var(--green-bright)">Book</span></span>
-     <p id="footer-text-el" style="color:rgba(255,255,255,0.55);font-size:13px;margin-top:8px;">© 2026 AgroBook. All rights reserved. Serving Kolar farmers.</p>
-    </div>
-   </footer>
+<!-- ===== NAVBAR ===== -->
+<nav class="navbar">
+  <div class="nav-brand" onclick="safeShowPage('home')">🌾 AgroBook</div>
+  <div class="nav-links">
+    <button id="nav-home" class="tab-btn active" onclick="safeShowPage('home')">Home</button>
+    <button id="nav-user-login" class="tab-btn" onclick="safeShowPage('user-login')">Login</button>
+    <button id="nav-register" class="tab-btn" onclick="safeShowPage('register')">Register</button>
+    <button id="nav-admin-login" class="tab-btn" onclick="safeShowPage('admin-login')">Admin</button>
   </div>
- </body>
-</html>
+</nav>
 
+<!-- ===== HOME PAGE ===== -->
+<div id="page-home" class="page active">
+  <section class="hero">
+    <div class="hero-content">
+      <h1>Book Agricultural Machines in Minutes</h1>
+      <p>Transparent pricing, real-time GPS tracking, and hassle-free booking for Kolar farmers.</p>
+      <button class="btn btn-primary" onclick="safeShowPage('register')">Get Started</button>
+      <button class="btn btn-outline" onclick="safeShowPage('user-login')">Login</button>
+    </div>
+  </section>
+  <section class="features">
+    <div class="feature-card"><div class="feature-icon">📋</div><h3>Easy Booking</h3><p>Book your machines in minutes with instant cost breakdown.</p></div>
+    <div class="feature-card"><div class="feature-icon">📡</div><h3>Live GPS Tracking</h3><p>Track your booked machine in real time on a map.</p></div>
+    <div class="feature-card"><div class="feature-icon">💰</div><h3>Transparent Pricing</h3><p>Auto-calculated costs based on acres, distance and machine type.</p></div>
+  </section>
+  <section class="about" style="padding:2rem;max-width:800px;margin:auto;text-align:center">
+    <h2>About AgroBook</h2>
+    <p>AgroBook connects Kolar farmers with quality machines for efficient, affordable farming.</p>
+    <p>📞 +91 8147032767 &nbsp;|&nbsp; Mon–Sun, 24hrs &nbsp;|&nbsp; AgroBook Office, Kolar, Karnataka – 563101</p>
+  </section>
+</div>
+
+<!-- ===== REGISTER ===== -->
+<div id="page-register" class="page">
+  <div class="auth-container">
+    <h2>Register to Book</h2>
+    <form id="register-form" onsubmit="handleRegister(event)">
+      <div class="form-group"><label>Full Name</label><input id="reg-name" type="text" placeholder="Your name" required /></div>
+      <div class="form-group"><label>Email</label><input id="reg-email" type="email" placeholder="email@example.com" required /></div>
+      <div class="form-group"><label>Phone</label><input id="reg-phone" type="tel" placeholder="10-digit phone" required /></div>
+      <div class="form-group">
+        <label>Password</label>
+        <div style="position:relative">
+          <input id="reg-pass" type="password" placeholder="Strong password" required oninput="checkPasswordStrength(this.value,'reg-pass-strength')" />
+          <span id="reg-pass-icon" data-lucide="eye" onclick="togglePassVis('reg-pass')" style="position:absolute;right:0.75rem;top:50%;transform:translateY(-50%);cursor:pointer"></span>
+        </div>
+        <small id="reg-pass-strength"></small>
+      </div>
+      <div id="reg-error" class="error-msg" style="display:none"></div>
+      <button id="reg-btn" type="submit" class="btn btn-primary" style="width:100%">Create Account</button>
+    </form>
+    <p style="text-align:center;margin-top:1rem">Already have an account? <a href="#" onclick="safeShowPage('user-login')">Login</a></p>
+  </div>
+</div>
+
+<!-- ===== USER LOGIN ===== -->
+<div id="page-user-login" class="page">
+  <div class="auth-container">
+    <h2>Welcome back, farmer!</h2>
+    <form id="login-form" onsubmit="handleLogin(event)">
+      <div class="form-group"><label>Email</label><input id="login-email" type="email" placeholder="email@example.com" required /></div>
+      <div class="form-group">
+        <label>Password</label>
+        <div style="position:relative">
+          <input id="login-pass" type="password" placeholder="Password" required />
+          <span id="login-pass-icon" data-lucide="eye" onclick="togglePassVis('login-pass')" style="position:absolute;right:0.75rem;top:50%;transform:translateY(-50%);cursor:pointer"></span>
+        </div>
+      </div>
+      <div id="login-error" class="error-msg" style="display:none"></div>
+      <button type="submit" class="btn btn-primary" style="width:100%">Login</button>
+    </form>
+    <p style="text-align:center;margin-top:1rem">No account? <a href="#" onclick="safeShowPage('register')">Register</a></p>
+  </div>
+</div>
+
+<!-- ===== ADMIN LOGIN ===== -->
+<div id="page-admin-login" class="page">
+  <div class="auth-container">
+    <h2>Admin Login</h2>
+    <form id="admin-login-form" onsubmit="handleAdminLogin(event)">
+      <div class="form-group"><label>Admin Email</label><input id="admin-email" type="email" placeholder="admin@gmail.com" required /></div>
+      <div class="form-group"><label>Password</label><input id="admin-pass" type="password" placeholder="Password" required /></div>
+      <div id="admin-login-error" class="error-msg" style="display:none"></div>
+      <button type="submit" class="btn btn-primary" style="width:100%">Login as Admin</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===== USER DASHBOARD ===== -->
+<div id="page-user-dashboard" class="page">
+  <div class="dashboard-header">
+    <span id="dash-username">👤 User</span>
+    <button class="btn btn-outline btn-sm" onclick="logout()">Logout</button>
+  </div>
+  <div class="tab-bar">
+    <button id="udash-tab-search" class="tab-btn active" onclick="switchUserTab('search')">🔍 Book Machine</button>
+    <button id="udash-tab-bookings" class="tab-btn" onclick="switchUserTab('bookings')">📋 My Bookings</button>
+  </div>
+
+  <!-- Search / Book -->
+  <div id="udash-search">
+    <div class="search-container">
+      <h2>Calculate Cost &amp; Book</h2>
+      <form id="search-form" onsubmit="calculateCost(event)">
+        <div class="form-group"><label>Machine Type</label>
+          <select id="machine-type" required>
+            <option value="">-- Select Machine --</option>
+            <option>Grass Cutter</option><option>Harvester</option><option>Flip plow</option><option>Corn Planter</option><option>other</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Crop Type</label>
+          <select id="crop-type" required>
+            <option value="">-- Select Crop --</option>
+            <option>Paddy</option><option>Ragi</option><option>Wheat</option><option>Corn</option><option>Sugarcane</option><option>Other</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Number of Acres</label><input id="num-acres" type="number" min="0.1" step="0.1" placeholder="e.g. 2.5" required /></div>
+        <div class="form-group">
+          <label>Distance from Machine (km)
+            <button type="button" class="btn-gps" onclick="autoFillDistanceFromGPS()" style="margin-left:0.5rem">📡 Auto-fill via GPS</button>
+          </label>
+          <input id="distance-km" type="number" min="0.1" step="0.1" placeholder="e.g. 10" required />
+        </div>
+        <div id="search-error" class="error-msg" style="display:none"></div>
+        <button type="submit" class="btn btn-primary" style="width:100%">Calculate Cost</button>
+      </form>
+      <!-- Result card -->
+      <div id="result-card" style="display:none" class="result-card">
+        <div style="display:flex;align-items:center;gap:0.5rem">
+          <span id="res-machine-icon" style="font-size:2rem"></span>
+          <h3 id="res-machine-title" style="margin:0"></h3>
+        </div>
+        <div id="res-machine-status" style="display:none"><span id="res-status-text" class="badge"></span></div>
+        <div id="res-unavailable-warning" class="error-msg" style="display:none">⚠️ Machine currently unavailable for booking.</div>
+        <table style="width:100%;margin-top:0.75rem;font-size:0.95rem">
+          <tr><td>Machine</td><td id="res-machine"></td></tr>
+          <tr><td>Crop</td><td id="res-crop"></td></tr>
+          <tr><td>Acres</td><td id="res-acres"></td></tr>
+          <tr><td>Machine Cost</td><td id="res-machine-cost"></td></tr>
+          <tr><td>Travel Cost</td><td id="res-travel-cost"></td></tr>
+          <tr><td>Driver Cost</td><td id="res-driver-cost"></td></tr>
+          <tr><td><b>Total</b></td><td><b id="res-total"></b></td></tr>
+          <tr><td>Est. Time</td><td id="res-time"></td></tr>
+        </table>
+        <div id="book-error" class="error-msg" style="display:none"></div>
+        <button id="book-btn" class="btn btn-primary" style="width:100%;margin-top:1rem" onclick="confirmBooking()">✅ Confirm Booking</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- My Bookings -->
+  <div id="udash-bookings" style="display:none">
+    <div class="search-container">
+      <h2>My Bookings</h2>
+      <div id="user-bookings-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ADMIN DASHBOARD ===== -->
+<div id="page-admin-dashboard" class="page">
+  <div class="dashboard-header">
+    <span>🛡️ Admin Dashboard</span>
+    <button class="btn btn-outline btn-sm" onclick="logout()">Logout</button>
+  </div>
+
+  <!-- Fleet Map -->
+  <div style="padding:1rem">
+    <h2 style="margin-bottom:0.5rem">📡 Live Fleet Map</h2>
+    <p style="font-size:0.85rem;color:#6b7280;margin-bottom:0.5rem">🟢 Available &nbsp; 🔴 Busy &nbsp; 🟡 Maintenance &nbsp; — Auto-refreshes every 30s</p>
+    <div id="fleet-map"></div>
+    <button class="btn-gps" onclick="refreshFleetMap()">🔄 Refresh Now</button>
+  </div>
+
+  <!-- Geofence Alerts -->
+  <div style="padding:1rem">
+    <div class="gps-panel">
+      <h3>⚠️ Geofence Alerts <button class="btn-gps" style="float:right" onclick="loadGeofenceAlerts()">Refresh</button></h3>
+      <div id="geofence-alerts-list">Loading alerts...</div>
+    </div>
+  </div>
+
+  <!-- Machine Configs -->
+  <div style="padding:1rem">
+    <h2>⚙️ Machine Configs</h2>
+    <div id="admin-machine-container"></div>
+  </div>
+
+  <!-- Users -->
+  <div style="padding:1rem">
+    <h2>👥 Users</h2>
+    <div id="admin-users-container"></div>
+  </div>
+
+  <!-- Bookings -->
+  <div style="padding:1rem">
+    <h2>📋 All Bookings</h2>
+    <div id="admin-bookings-container"></div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

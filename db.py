@@ -39,6 +39,9 @@ def get_db_connection():
         petrol_cost_per_km DECIMAL(10,2) DEFAULT 25,
         driver_cost DECIMAL(10,2) DEFAULT 600,
         availability ENUM('Available','Busy','Maintenance') DEFAULT 'Available',
+        base_lat DECIMAL(10,7) DEFAULT 13.1350000,
+        base_lng DECIMAL(10,7) DEFAULT 78.1320000,
+        geofence_radius_km DECIMAL(5,2) DEFAULT 50.00,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
     """)
@@ -60,8 +63,43 @@ def get_db_connection():
         total_cost DECIMAL(10,2),
         estimated_hours INT,
         status ENUM('Pending','Confirmed','Cancelled') DEFAULT 'Pending',
+        field_lat DECIMAL(10,7) DEFAULT NULL,
+        field_lng DECIMAL(10,7) DEFAULT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+    """)
+
+    # GPS machine_locations table — stores every ping from GPS hardware
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS machine_locations (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        machine_name VARCHAR(100) NOT NULL,
+        lat DECIMAL(10,7) NOT NULL,
+        lng DECIMAL(10,7) NOT NULL,
+        speed DECIMAL(8,2) DEFAULT 0,
+        heading DECIMAL(8,2) DEFAULT 0,
+        signal_strength INT DEFAULT 100,
+        status VARCHAR(30) DEFAULT 'Active',
+        booking_id INT DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_machine_name (machine_name),
+        INDEX idx_created_at (created_at)
+    )
+    """)
+
+    # GPS geofence_alerts table — records every boundary violation
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS geofence_alerts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        machine_name VARCHAR(100) NOT NULL,
+        alert_type ENUM('OutOfZone','Unauthorised','ReturnedToBase') NOT NULL,
+        lat DECIMAL(10,7) NOT NULL,
+        lng DECIMAL(10,7) NOT NULL,
+        booking_id INT DEFAULT NULL,
+        message TEXT,
+        resolved TINYINT(1) DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
 
