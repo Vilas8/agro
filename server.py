@@ -50,7 +50,7 @@ def get_table_schema(type_):
 
 
 # ---------------------------------------------------------------------------
-# HAVERSINE — distance in km between two lat/lng points
+# HAVERSINE
 # ---------------------------------------------------------------------------
 def haversine(lat1, lng1, lat2, lng2):
     R = 6371
@@ -61,10 +61,9 @@ def haversine(lat1, lng1, lat2, lng2):
 
 
 # ---------------------------------------------------------------------------
-# AUTO-AVAILABILITY — called after each GPS ping
+# AUTO-AVAILABILITY
 # ---------------------------------------------------------------------------
 def update_machine_availability(machine_name, speed, lat, lng):
-    """Auto-set availability based on movement and position."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
@@ -75,21 +74,17 @@ def update_machine_availability(machine_name, speed, lat, lng):
         cfg = cursor.fetchone()
         if not cfg:
             cursor.close(); conn.close(); return
-
         if cfg['availability'] == 'Maintenance':
             cursor.close(); conn.close(); return
-
         base_lat = float(cfg['base_lat'] or 13.135)
         base_lng = float(cfg['base_lng'] or 78.132)
         dist_from_base = haversine(lat, lng, base_lat, base_lng)
-
         if speed is not None and float(speed) > 2:
             new_status = 'Busy'
         elif dist_from_base < 0.5:
             new_status = 'Available'
         else:
             new_status = 'Busy'
-
         cursor.execute(
             'UPDATE machine_configs SET availability = %s WHERE machine_name = %s',
             (new_status, machine_name)
@@ -102,22 +97,17 @@ def update_machine_availability(machine_name, speed, lat, lng):
 
 
 # ---------------------------------------------------------------------------
-# GEOFENCE CHECK — creates alert if machine leaves allowed zone
+# GEOFENCE CHECK
 # ---------------------------------------------------------------------------
 def check_geofence(machine_name, lat, lng):
-    """Insert a geofence_alerts row if machine is out of zone."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-
-        # Check for active booking
         cursor.execute(
             "SELECT id, field_lat, field_lng FROM bookings WHERE machine_name = %s AND status = 'Confirmed' ORDER BY created_at DESC LIMIT 1",
             (machine_name,)
         )
         booking = cursor.fetchone()
-
-        # Check base geofence
         cursor.execute(
             'SELECT base_lat, base_lng, geofence_radius_km FROM machine_configs WHERE machine_name = %s',
             (machine_name,)
@@ -125,12 +115,10 @@ def check_geofence(machine_name, lat, lng):
         cfg = cursor.fetchone()
         if not cfg:
             cursor.close(); conn.close(); return
-
         base_lat = float(cfg['base_lat'] or 13.135)
         base_lng = float(cfg['base_lng'] or 78.132)
         radius = float(cfg['geofence_radius_km'] or 50)
         dist_from_base = haversine(lat, lng, base_lat, base_lng)
-
         if not booking and dist_from_base > 0.5:
             cursor.execute(
                 "INSERT INTO geofence_alerts (machine_name, alert_type, lat, lng, message) VALUES (%s, 'Unauthorised', %s, %s, %s)",
@@ -143,11 +131,33 @@ def check_geofence(machine_name, lat, lng):
                 (machine_name, lat, lng, booking['id'], f'{machine_name} is {dist_from_base:.1f} km from base — outside {radius} km zone')
             )
             conn.commit()
-
         cursor.close()
         conn.close()
     except Exception as e:
         print(f'geofence check error: {e}')
+
+
+# ---------------------------------------------------------------------------
+# ROOT HEALTH CHECK
+# ---------------------------------------------------------------------------
+@app.route('/', methods=['GET'])
+def health_check():
+    return jsonify({
+        'status': 'ok',
+        'service': 'AgroBook API',
+        'version': '1.0',
+        'endpoints': [
+            'GET  /api/users',
+            'POST /api/users',
+            'GET  /api/machine_configs',
+            'GET  /api/bookings',
+            'POST /api/bookings',
+            'GET  /api/location/latest',
+            'POST /api/location',
+            'GET  /api/geofence_alerts',
+            'GET  /api/distance?lat1=&lng1=&lat2=&lng2='
+        ]
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -253,7 +263,6 @@ def delete_record(type_, record_id):
 # ---------------------------------------------------------------------------
 @app.route('/api/location', methods=['POST'])
 def receive_location():
-    """GPS hardware / simulator posts pings here."""
     data = request.get_json(silent=True) or {}
     for field in ['machine_name', 'lat', 'lng']:
         if field not in data:
@@ -263,7 +272,6 @@ def receive_location():
         lng = float(data['lng'])
         speed = float(data.get('speed', 0))
         machine_name = data['machine_name']
-
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
@@ -277,11 +285,8 @@ def receive_location():
         conn.commit()
         cursor.close()
         conn.close()
-
-        # Side-effects: auto-update availability + geofence check
         update_machine_availability(machine_name, speed, lat, lng)
         check_geofence(machine_name, lat, lng)
-
         return jsonify({'isOk': True})
     except Exception as e:
         return jsonify({'isOk': False, 'error': str(e)}), 500
@@ -289,7 +294,6 @@ def receive_location():
 
 @app.route('/api/location/<machine_name>', methods=['GET'])
 def get_location_history(machine_name):
-    """Returns last 200 pings for a machine (newest first)."""
     try:
         limit = int(request.args.get('limit', 200))
         conn = get_db_connection()
@@ -308,7 +312,6 @@ def get_location_history(machine_name):
 
 @app.route('/api/location/latest', methods=['GET'])
 def get_all_latest_locations():
-    """Returns the single most-recent ping for every machine — used by the fleet map."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
@@ -331,7 +334,6 @@ def get_all_latest_locations():
 
 @app.route('/api/geofence_alerts', methods=['GET'])
 def get_geofence_alerts():
-    """Returns unresolved geofence alerts for the admin dashboard."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
@@ -360,7 +362,6 @@ def resolve_alert(alert_id):
 
 @app.route('/api/distance', methods=['GET'])
 def get_distance():
-    """Haversine distance helper used by frontend to auto-fill distance field."""
     try:
         lat1 = float(request.args['lat1'])
         lng1 = float(request.args['lng1'])
