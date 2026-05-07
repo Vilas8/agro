@@ -212,17 +212,20 @@ function saveSession() {
   } catch(e) {}
 }
 
+// FIX 2: restoreSession awaits fetchAllFromApi before rendering so bookings are ready
 async function restoreSession() {
   try {
     const sess = JSON.parse(localStorage.getItem('agrobook_session') || 'null');
     if (!sess) return false;
+
     if (sess.isAdmin) {
       isAdmin = true;
       showPage('admin-dashboard');
       return true;
     } else if (sess.user) {
-      currentUser = sess.user;
-      // Validate against API
+      // Fetch fresh data first so allData is populated before renderUserBookings
+      await fetchAllFromApi();
+
       try {
         const res = await fetch(`${API_BASE}/users`).then(r => r.json());
         if (res.isOk) {
@@ -230,10 +233,16 @@ async function restoreSession() {
           if (!freshUser) { localStorage.removeItem('agrobook_session'); currentUser = null; return false; }
           currentUser = { ...freshUser, type: 'user' };
           saveSession();
+        } else {
+          currentUser = sess.user;
         }
-      } catch(e) { /* offline: use cached */ }
+      } catch(e) {
+        // offline: use cached session
+        currentUser = sess.user;
+      }
+
       const nameEl = document.getElementById('dash-username');
-      if (nameEl) nameEl.textContent = 'u{1F464} ' + currentUser.user_name;
+      if (nameEl) nameEl.textContent = '\uD83D\uDC64 ' + currentUser.user_name;
       showPage('user-dashboard');
       return true;
     }
@@ -256,8 +265,8 @@ function checkPasswordStrength(pass,elemId){
   clearTimeout(passDebounceTimer);
   passDebounceTimer=setTimeout(()=>{
     if(!pass){elem.textContent='';return;}
-    if(isStrongPassword(pass)){elem.textContent='✅ Strong password';elem.style.color='#16a34a';}
-    else{elem.textContent='❌ Weak (8+ chars, upper, lower, number, special)';elem.style.color='#dc2626';}
+    if(isStrongPassword(pass)){elem.textContent='\u2705 Strong password';elem.style.color='#16a34a';}
+    else{elem.textContent='\u274C Weak (8+ chars, upper, lower, number, special)';elem.style.color='#dc2626';}
   },250);
 }
 function togglePassVis(inputId){
@@ -314,7 +323,7 @@ async function handleRegister(e){
   if(!name||!email||!phone||!pass){btn.disabled=false;btn.textContent='Create Account';errEl.textContent='Please fill all fields.';errEl.style.display='block';return;}
   if(!isValidEmail(email)){btn.disabled=false;btn.textContent='Create Account';errEl.textContent='Invalid email.';errEl.style.display='block';return;}
   if(!isValidPhone(phone)){btn.disabled=false;btn.textContent='Create Account';errEl.textContent='Invalid phone (10 digits).';errEl.style.display='block';return;}
-  if(!isStrongPassword(pass)){btn.disabled=false;btn.textContent='Create Account';errEl.textContent='Weak password — 8+ chars, upper, lower, number, special char.';errEl.style.display='block';return;}
+  if(!isStrongPassword(pass)){btn.disabled=false;btn.textContent='Create Account';errEl.textContent='Weak password \u2014 8+ chars, upper, lower, number, special char.';errEl.style.display='block';return;}
   await fetchAllFromApi();
   if(allData.filter(r=>r.type==='user').find(r=>r.user_email===email)){btn.disabled=false;btn.textContent='Create Account';errEl.textContent='Email already registered.';errEl.style.display='block';return;}
   const res=await window.dataSdk.create({type:'user',user_name:name,user_email:email,user_phone:phone,user_password:pass,created_at:new Date().toISOString(),status:'active'});
@@ -346,7 +355,7 @@ async function handleLogin(e){
   currentUser=user;
   saveSession();
   const nameEl=document.getElementById('dash-username');
-  if(nameEl)nameEl.textContent='👤 '+user.user_name;
+  if(nameEl)nameEl.textContent='\uD83D\uDC64 '+user.user_name;
   document.getElementById('login-form').reset();
   showToast('Welcome back, '+user.user_name+'!','success');
   showPage('user-dashboard');
@@ -391,17 +400,17 @@ function calculateCost(e){
   const estHours=Math.ceil(acres*1.5);
   const isGrassCutter=machineType==='Grass Cutter';
   const isUnavailable=isGrassCutter&&config.availability!=='Available';
-  const icons={'Grass Cutter':'🌿','Harvester':'🌾','Flip plow':'🔄','Corn Planter':'🌽','other':'🚜'};
-  const iconEl=document.getElementById('res-machine-icon'); if(iconEl)iconEl.textContent=icons[machineType]||'🚜';
+  const icons={'Grass Cutter':'\uD83C\uDF3F','Harvester':'\uD83C\uDF3E','Flip plow':'\uD83D\uDD04','Corn Planter':'\uD83C\uDF3D','other':'\uD83D\uDE9C'};
+  const iconEl=document.getElementById('res-machine-icon'); if(iconEl)iconEl.textContent=icons[machineType]||'\uD83D\uDE9C';
   document.title=machineType+' - AgroBook';
   document.getElementById('res-machine').textContent=machineType;
   document.getElementById('res-machine-title').textContent=machineType+' Cost Breakdown';
   document.getElementById('res-crop').textContent=crop;
   document.getElementById('res-acres').textContent=acres+' acres';
-  document.getElementById('res-machine-cost').textContent='₹'+machine_cost.toLocaleString('en-IN');
-  document.getElementById('res-travel-cost').textContent='₹'+travel_cost.toLocaleString('en-IN');
-  document.getElementById('res-driver-cost').textContent='₹'+driver_cost.toLocaleString('en-IN');
-  document.getElementById('res-total').textContent='₹'+total_cost.toLocaleString('en-IN');
+  document.getElementById('res-machine-cost').textContent='\u20B9'+machine_cost.toLocaleString('en-IN');
+  document.getElementById('res-travel-cost').textContent='\u20B9'+travel_cost.toLocaleString('en-IN');
+  document.getElementById('res-driver-cost').textContent='\u20B9'+driver_cost.toLocaleString('en-IN');
+  document.getElementById('res-total').textContent='\u20B9'+total_cost.toLocaleString('en-IN');
   document.getElementById('res-time').textContent=estHours+' hour'+(estHours>1?'s':'');
   document.getElementById('result-card').style.display='block';
   const statusEl=document.getElementById('res-machine-status');
@@ -430,7 +439,7 @@ async function autoFillDistanceFromGPS(){
       if(locRes.isOk&&locRes.data.length){
         const latest=locRes.data[0];
         const distRes=await fetch(`${API_BASE}/distance?lat1=${latest.lat}&lng1=${latest.lng}&lat2=${userLat}&lng2=${userLng}`).then(r=>r.json());
-        if(distRes.isOk){document.getElementById('distance-km').value=distRes.distance_km;showToast('Distance auto-filled: '+distRes.distance_km+' km 📍','success');}
+        if(distRes.isOk){document.getElementById('distance-km').value=distRes.distance_km;showToast('Distance auto-filled: '+distRes.distance_km+' km \uD83D\uDCCD','success');}
       } else {
         const distRes=await fetch(`${API_BASE}/distance?lat1=13.135&lng1=78.132&lat2=${userLat}&lng2=${userLng}`).then(r=>r.json());
         if(distRes.isOk){document.getElementById('distance-km').value=distRes.distance_km;showToast('Distance from base: '+distRes.distance_km+' km','success');}
@@ -449,9 +458,9 @@ async function confirmBooking(){
   try{
     const bookingData={type:'booking',user_name:currentUser.user_name,user_email:currentUser.user_email,user_phone:currentUser.user_phone,...pendingBookingData,status:'Pending',created_at:new Date().toISOString()};
     const res=await window.dataSdk.create(bookingData);
-    btn.disabled=false; btn.textContent='✅ Confirmed!';
+    btn.disabled=false; btn.textContent='\u2705 Confirmed!';
     if(res.isOk){
-      showToast(pendingBookingData.machine_name+' booked! Check My Bookings. 🎉','success');
+      showToast(pendingBookingData.machine_name+' booked! Check My Bookings. \uD83C\uDF89','success');
       pendingBookingData=null;
       const rc=document.getElementById('result-card'); if(rc)rc.style.display='none';
       const sf=document.getElementById('search-form'); if(sf)sf.reset();
@@ -459,7 +468,7 @@ async function confirmBooking(){
     } else { throw new Error(res.error||JSON.stringify(res)); }
   }catch(error){
     showToast('Booking failed: '+error.message,'error');
-    btn.disabled=false; btn.innerHTML='✅ Confirm Booking';
+    btn.disabled=false; btn.innerHTML='\u2705 Confirm Booking';
   }
 }
 
@@ -471,41 +480,45 @@ function switchUserTab(tab){
   document.getElementById('udash-tab-bookings').classList.toggle('active',tab==='bookings');
   if(tab==='bookings')renderUserBookings();
 }
+
+// FIX 2: Always fetches from API; fallback to allData if API fails
 async function renderUserBookings(){
   if(!currentUser)return;
   const container=document.getElementById('user-bookings-list'); if(!container)return;
-  container.innerHTML='<div style="color:#6b7280;font-size:0.9rem;padding:1rem">⏳ Loading bookings...</div>';
+  container.innerHTML='<div style="color:#6b7280;font-size:0.9rem;padding:1rem">\u23F3 Loading bookings...</div>';
+  let userBookings = [];
   try{
     const res=await fetch(`${API_BASE}/bookings?email=${encodeURIComponent(currentUser.user_email)}`).then(r=>r.json());
-    const userBookings=res.isOk?res.data:allData.filter(r=>r.type==='booking'&&r.user_email===currentUser.user_email);
-    if(!userBookings.length){
-      container.innerHTML='<div style="text-align:center;padding:56px 16px;color:#9ca3af"><div style="font-size:3rem;margin-bottom:14px">📋</div><p style="font-size:15px">No bookings yet. Search and book a machine above!</p></div>';
-      return;
+    if(res.isOk && Array.isArray(res.data)){
+      userBookings = res.data;
+    } else {
+      throw new Error('bad response');
     }
-    container.innerHTML=userBookings.map(b=>
-      '<div class="booking-card">'+
-      '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'+
-      '<span style="font-family:\'Syne\',sans-serif;font-weight:700;font-size:16px;">'+(b.machine_name||'Machine')+'</span>'+
-      '<span class="badge status-'+((b.status||'pending').toLowerCase())+'">'+( b.status||'Pending')+'</span>'+
-      '</div>'+
-      '<div class="booking-meta" style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;">'+
-      '<span>🌾 '+(b.crop_type||'-')+'</span>'+
-      '<span>📐 '+(b.acres||'-')+' acres</span>'+
-      '<span>📍 '+(b.distance||'-')+' km</span>'+
-      '<span>💰 ₹'+((b.total_cost||0).toLocaleString('en-IN'))+'</span>'+
-      '<span>⏱️ '+(b.estimated_hours||'-')+' hrs</span>'+
-      '</div>'+
-      '<div style="font-size:12px;color:#9ca3af;margin-top:6px;">'+(b.created_at?new Date(b.created_at).toLocaleString('en-IN'):'')+'</div>'+
-      '<button class="btn-sm" onclick="showBookingMap(\''+b.machine_name+'\')" style="margin-top:10px;font-size:12px;">📡 Track Machine</button>'+
-      '</div>'
-    ).join('');
   }catch(e){
-    const userBookings=allData.filter(r=>r.type==='booking'&&r.user_email===currentUser.user_email);
-    if(!userBookings.length){container.innerHTML='<div style="text-align:center;padding:56px 16px;color:#9ca3af"><div style="font-size:3rem;margin-bottom:14px">📋</div><p>No bookings yet.</p></div>';return;}
-    container.innerHTML=userBookings.map(b=>
-      '<div class="booking-card"><div style="display:flex;justify-content:space-between;"><span style="font-family:\'Syne\',sans-serif;font-weight:700;">'+(b.machine_name||'Machine')+'</span><span class="badge status-'+((b.status||'pending').toLowerCase())+'">'+( b.status||'Pending')+'</span></div></div>'
-    ).join('');
+    userBookings = allData.filter(r=>r.type==='booking'&&r.user_email===currentUser.user_email);
   }
+
+  if(!userBookings.length){
+    container.innerHTML='<div style="text-align:center;padding:56px 16px;color:#9ca3af"><div style="font-size:3rem;margin-bottom:14px">\uD83D\uDCCB</div><p style="font-size:15px">No bookings yet. Search and book a machine above!</p></div>';
+    return;
+  }
+  container.innerHTML=userBookings.map(b=>
+    '<div class="booking-card">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'+
+    '<span style="font-family:\'Syne\',sans-serif;font-weight:700;font-size:16px;">'+(b.machine_name||'Machine')+'</span>'+
+    '<span class="badge status-'+((b.status||'pending').toLowerCase())+'">'+(b.status||'Pending')+'</span>'+
+    '</div>'+
+    '<div class="booking-meta" style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;">'+
+    '<span>\uD83C\uDF3E '+(b.crop_type||'-')+'</span>'+
+    '<span>\uD83D\uDCD0 '+(b.acres||'-')+' acres</span>'+
+    '<span>\uD83D\uDCCD '+(b.distance||'-')+' km</span>'+
+    '<span>\uD83D\uDCB0 \u20B9'+((b.total_cost||0).toLocaleString('en-IN'))+'</span>'+
+    '<span>\u23F1\uFE0F '+(b.estimated_hours||'-')+' hrs</span>'+
+    '</div>'+
+    '<div style="font-size:12px;color:#9ca3af;margin-top:6px;">'+(b.created_at?new Date(b.created_at).toLocaleString('en-IN'):'')+'</div>'+
+    '<button class="btn-sm" onclick="showBookingMap(\''+b.machine_name+'\')" style="margin-top:10px;font-size:12px;">\uD83D\uDCE1 Track Machine</button>'+
+    '</div>'
+  ).join('');
 }
 
 // ===== GPS - USER BOOKING MAP =====
@@ -518,8 +531,8 @@ async function showBookingMap(machineName){
     modal.innerHTML=
       '<div style="background:#fff;border-radius:12px;padding:1.5rem;width:90%;max-width:600px;max-height:90vh;overflow-y:auto;">'+
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">'+
-      '<h3 style="margin:0">📡 Live Tracking: <span id="gps-modal-title"></span></h3>'+
-      '<button onclick="closeGpsModal()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;">✕</button>'+
+      '<h3 style="margin:0">\uD83D\uDCE1 Live Tracking: <span id="gps-modal-title"></span></h3>'+
+      '<button onclick="closeGpsModal()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;">\u2715</button>'+
       '</div>'+
       '<div id="gps-info-bar" style="background:#f0fdf4;border-radius:8px;padding:0.75rem;margin-bottom:1rem;font-size:0.9rem;"></div>'+
       '<div id="gps-user-map" style="height:300px;border-radius:8px;"></div>'+
@@ -531,7 +544,7 @@ async function showBookingMap(machineName){
   document.getElementById('gps-modal-title').textContent=machineName;
   if(userLocationMap){userLocationMap.remove();userLocationMap=null;}
   userLocationMap=L.map('gps-user-map').setView([13.135,78.132],12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors'}).addTo(userLocationMap);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'\u00A9 OpenStreetMap contributors'}).addTo(userLocationMap);
   await refreshUserTrackingMap(machineName);
 }
 async function refreshUserTrackingMap(machineName){
@@ -539,19 +552,19 @@ async function refreshUserTrackingMap(machineName){
     const res=await fetch(`${API_BASE}/location/${encodeURIComponent(machineName)}?limit=50`).then(r=>r.json());
     const infoBar=document.getElementById('gps-info-bar');
     if(!res.isOk||!res.data.length){
-      if(infoBar)infoBar.innerHTML='⚠️ No GPS data. Showing base location (Kolar).';
-      L.marker([13.135,78.132]).addTo(userLocationMap).bindPopup(machineName+' — No signal').openPopup();
+      if(infoBar)infoBar.innerHTML='\u26A0\uFE0F No GPS data. Showing base location (Kolar).';
+      L.marker([13.135,78.132]).addTo(userLocationMap).bindPopup(machineName+' \u2014 No signal').openPopup();
       return;
     }
     const latest=res.data[0];
     const lat=parseFloat(latest.lat),lng=parseFloat(latest.lng);
-    if(infoBar)infoBar.innerHTML='<b>📍 Last known:</b> '+lat.toFixed(5)+', '+lng.toFixed(5)+'<br><b>🚀 Speed:</b> '+(latest.speed||0)+' km/h &nbsp;&nbsp;<b>📶 Signal:</b> '+(latest.signal_strength||'--')+'%&nbsp;&nbsp;<b>🕐 Updated:</b> '+latest.created_at;
-    const liveIcon=L.divIcon({html:'<div style="font-size:1.8rem">🚜</div>',iconSize:[32,32],className:''});
+    if(infoBar)infoBar.innerHTML='<b>\uD83D\uDCCD Last known:</b> '+lat.toFixed(5)+', '+lng.toFixed(5)+'<br><b>\uD83D\uDE80 Speed:</b> '+(latest.speed||0)+' km/h &nbsp;&nbsp;<b>\uD83D\uDCF6 Signal:</b> '+(latest.signal_strength||'--')+'%&nbsp;&nbsp;<b>\uD83D\uDD50 Updated:</b> '+latest.created_at;
+    const liveIcon=L.divIcon({html:'<div style="font-size:1.8rem">\uD83D\uDE9C</div>',iconSize:[32,32],className:''});
     L.marker([lat,lng],{icon:liveIcon}).addTo(userLocationMap).bindPopup(machineName+'<br>Speed: '+(latest.speed||0)+' km/h').openPopup();
     userLocationMap.setView([lat,lng],14);
     if(res.data.length>1){const path=res.data.map(p=>[parseFloat(p.lat),parseFloat(p.lng)]).reverse();L.polyline(path,{color:'#16a34a',weight:3,opacity:0.7}).addTo(userLocationMap);}
     const hist=document.getElementById('trip-history');
-    if(hist)hist.innerHTML='<h4 style="margin:0 0 0.5rem">🗺️ Recent Pings (last '+res.data.length+')</h4>'+res.data.slice(0,10).map(p=>'<div style="font-size:0.8rem;padding:0.25rem 0;border-bottom:1px solid #e5e7eb">'+p.created_at+' — '+parseFloat(p.lat).toFixed(5)+', '+parseFloat(p.lng).toFixed(5)+' — '+(p.speed||0)+' km/h</div>').join('');
+    if(hist)hist.innerHTML='<h4 style="margin:0 0 0.5rem">\uD83D\uDDFA\uFE0F Recent Pings (last '+res.data.length+')</h4>'+res.data.slice(0,10).map(p=>'<div style="font-size:0.8rem;padding:0.25rem 0;border-bottom:1px solid #e5e7eb">'+p.created_at+' \u2014 '+parseFloat(p.lat).toFixed(5)+', '+parseFloat(p.lng).toFixed(5)+' \u2014 '+(p.speed||0)+' km/h</div>').join('');
   }catch(e){console.error('GPS fetch error',e);}
 }
 function closeGpsModal(){
@@ -560,34 +573,90 @@ function closeGpsModal(){
 }
 
 // ===== GPS - ADMIN FLEET MAP =====
+// FIX 3: Clean pill markers with name + availability color. Always shows all configured machines.
 async function initFleetMap(){
   const container=document.getElementById('fleet-map'); if(!container)return;
   if(fleetMap){fleetMap.remove();fleetMap=null;fleetMarkers={};}
-  fleetMap=L.map('fleet-map').setView([13.135,78.132],11);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors'}).addTo(fleetMap);
-  L.marker([13.135,78.132],{icon:L.divIcon({html:'<div style="font-size:1.4rem">🏠</div>',iconSize:[28,28],className:''})}).addTo(fleetMap).bindPopup('AgroBook Base — Kolar');
+  fleetMap=L.map('fleet-map').setView([13.135,78.132],12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'\u00A9 OpenStreetMap contributors'}).addTo(fleetMap);
+  // Base marker
+  L.marker([13.135,78.132],{
+    icon:L.divIcon({
+      html:'<div style="background:#1a3a1a;color:#fff;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.3);">\uD83C\uDFE0 AgroBook Base</div>',
+      iconSize:[130,26],
+      iconAnchor:[65,13],
+      className:''
+    })
+  }).addTo(fleetMap);
   await refreshFleetMap();
   startGpsRefresh();
   await loadGeofenceAlerts();
 }
+
 async function refreshFleetMap(){
+  if(!fleetMap) return;
   try{
     const res=await fetch(`${API_BASE}/location/latest`).then(r=>r.json());
-    if(!res.isOk)return;
+
     const statusColors={'Available':'#16a34a','Busy':'#dc2626','Maintenance':'#d97706'};
-    res.data.forEach(loc=>{
-      const lat=parseFloat(loc.lat),lng=parseFloat(loc.lng);
-      const machineName=loc.machine_name;
+    const statusDot={'Available':'\uD83D\uDFE2','Busy':'\uD83D\uDD34','Maintenance':'\uD83D\uDFE1'};
+    const machineEmoji={'Grass Cutter':'\uD83C\uDF3F','Harvester':'\uD83C\uDF3E','Flip plow':'\uD83D\uDD04','Corn Planter':'\uD83C\uDF3D'};
+    // Spread machines slightly around Kolar base if no GPS
+    const defaultCoords={
+      'Grass Cutter': [13.1370, 78.1335],
+      'Harvester':    [13.1390, 78.1355],
+      'Flip plow':    [13.1330, 78.1360],
+      'Corn Planter': [13.1310, 78.1310]
+    };
+
+    const apiMachines={};
+    if(res.isOk && res.data && res.data.length){
+      res.data.forEach(loc=>{ apiMachines[loc.machine_name]=loc; });
+    }
+
+    const machinesToShow = Object.keys(machineConfigs).length
+      ? Object.keys(machineConfigs)
+      : Object.keys(defaultCoords);
+
+    machinesToShow.forEach(machineName=>{
+      const loc=apiMachines[machineName];
+      const coords=defaultCoords[machineName]||[13.135,78.132];
+      const lat=loc?parseFloat(loc.lat):coords[0];
+      const lng=loc?parseFloat(loc.lng):coords[1];
       const avail=(machineConfigs[machineName]||{}).availability||'Available';
       const color=statusColors[avail]||'#6b7280';
-      const iconHtml='<div style="background:'+color+';border-radius:50%;width:36px;height:36px;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,0.3);font-size:1.1rem">🚜</div>';
-      const icon=L.divIcon({html:iconHtml,iconSize:[36,36],className:''});
-      const popupText='<b>'+machineName+'</b><br>Status: '+avail+'<br>Speed: '+(loc.speed||0)+' km/h<br>Signal: '+(loc.signal_strength||'--')+'%<br><small>'+loc.created_at+'</small>';
-      if(fleetMarkers[machineName]){fleetMarkers[machineName].setLatLng([lat,lng]).setPopupContent(popupText);}
-      else{fleetMarkers[machineName]=L.marker([lat,lng],{icon}).addTo(fleetMap).bindPopup(popupText);}
+      const dot=statusDot[avail]||'\uD83D\uDFE2';
+      const emoji=machineEmoji[machineName]||'\uD83D\uDE9C';
+
+      // Clean pill label marker
+      const iconHtml=
+        '<div style="display:flex;flex-direction:column;align-items:center;">'+
+        '<div style="background:#fff;border:2px solid '+color+';border-radius:20px;padding:4px 10px;box-shadow:0 2px 8px rgba(0,0,0,0.15);display:flex;align-items:center;gap:5px;white-space:nowrap;">'+
+        '<span style="font-size:14px;">'+emoji+'</span>'+
+        '<span style="font-size:11px;font-weight:700;color:#1a3a1a;font-family:sans-serif;">'+machineName+'</span>'+
+        '<span style="font-size:11px;">'+dot+'</span>'+
+        '</div>'+
+        '<div style="width:2px;height:6px;background:'+color+';"></div>'+
+        '<div style="width:7px;height:7px;border-radius:50%;background:'+color+';border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.25);"></div>'+
+        '</div>';
+
+      const icon=L.divIcon({html:iconHtml,iconSize:[150,54],iconAnchor:[75,54],className:''});
+      const popup=
+        '<b>'+emoji+' '+machineName+'</b><br>'+
+        '<span style="color:'+color+';font-weight:600;">'+dot+' '+avail+'</span>'+
+        (loc?'<br>Speed: '+(loc.speed||0)+' km/h<br>Signal: '+(loc.signal_strength||'--')+'%<br><small>'+loc.created_at+'</small>':'<br><small>No live GPS \u2014 base location</small>');
+
+      if(fleetMarkers[machineName]){
+        fleetMarkers[machineName].setLatLng([lat,lng]);
+        fleetMarkers[machineName].setIcon(icon);
+        fleetMarkers[machineName].setPopupContent(popup);
+      }else{
+        fleetMarkers[machineName]=L.marker([lat,lng],{icon}).addTo(fleetMap).bindPopup(popup);
+      }
     });
   }catch(e){console.error('Fleet map refresh error',e);}
 }
+
 function startGpsRefresh(){stopGpsRefresh();gpsRefreshTimer=setInterval(async()=>{await refreshFleetMap();await loadGeofenceAlerts();},30000);}
 function stopGpsRefresh(){if(gpsRefreshTimer){clearInterval(gpsRefreshTimer);gpsRefreshTimer=null;}}
 
@@ -596,11 +665,11 @@ async function loadGeofenceAlerts(){
   const container=document.getElementById('geofence-alerts-list'); if(!container)return;
   try{
     const res=await fetch(`${API_BASE}/geofence_alerts`).then(r=>r.json());
-    if(!res.isOk||!res.data.length){container.innerHTML='<div style="color:#6b7280;font-size:0.9rem">✅ No active alerts</div>';return;}
+    if(!res.isOk||!res.data.length){container.innerHTML='<div style="color:#6b7280;font-size:0.9rem">\u2705 No active alerts</div>';return;}
     container.innerHTML=res.data.map(a=>
       '<div class="booking-card" style="border-left:4px solid #dc2626;margin-bottom:0.5rem;">'+
       '<div style="display:flex;justify-content:space-between;align-items:center;">'+
-      '<span><b>⚠️ '+a.alert_type+'</b> — '+a.machine_name+'</span>'+
+      '<span><b>\u26A0\uFE0F '+a.alert_type+'</b> \u2014 '+a.machine_name+'</span>'+
       '<button onclick="resolveAlert('+a.id+',this)" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:0.25rem 0.75rem;cursor:pointer;font-size:0.8rem">Resolve</button>'+
       '</div>'+
       '<div style="font-size:0.82rem;color:#6b7280;margin-top:0.25rem">'+a.message+'</div>'+
@@ -621,55 +690,50 @@ async function resolveAlert(alertId,btn){
 // ===== ADMIN: MACHINE CONFIG =====
 function onAdminMachineChange(){
   currentAdminMachine=document.getElementById('admin-machine-selector').value;
-  const icons={'Grass Cutter':'🌿','Harvester':'🌾','Flip plow':'🔄','Corn Planter':'🌽'};
+  const icons={'Grass Cutter':'\uD83C\uDF3F','Harvester':'\uD83C\uDF3E','Flip plow':'\uD83D\uDD04','Corn Planter':'\uD83C\uDF3D'};
   const iconEl=document.getElementById('admin-machine-icon');
-  if(iconEl)iconEl.textContent=icons[currentAdminMachine]||'🚜';
+  if(iconEl)iconEl.textContent=icons[currentAdminMachine]||'\uD83D\uDE9C';
   const cfg=machineConfigs[currentAdminMachine]||{rate_per_acre:800,cost_per_km:15,petrol_cost_per_km:25,driver_cost:600,availability:'Available'};
   document.getElementById('cfg-rate').value=cfg.rate_per_acre;
   document.getElementById('cfg-cpkm').value=cfg.cost_per_km;
   document.getElementById('cfg-petrol-km').value=cfg.petrol_cost_per_km;
   document.getElementById('cfg-driver').value=cfg.driver_cost;
   document.getElementById('cfg-avail').value=cfg.availability||'Available';
-  const dispRate=document.getElementById('disp-rate'); if(dispRate)dispRate.textContent='₹'+cfg.rate_per_acre;
-  const dispCpkm=document.getElementById('disp-cpkm'); if(dispCpkm)dispCpkm.textContent='₹'+cfg.cost_per_km;
-  const dispPetrol=document.getElementById('disp-petrol-km'); if(dispPetrol)dispPetrol.textContent='₹'+cfg.petrol_cost_per_km;
-  const dispDriver=document.getElementById('disp-driver'); if(dispDriver)dispDriver.textContent='₹'+cfg.driver_cost;
+  const dispRate=document.getElementById('disp-rate'); if(dispRate)dispRate.textContent='\u20B9'+cfg.rate_per_acre;
+  const dispCpkm=document.getElementById('disp-cpkm'); if(dispCpkm)dispCpkm.textContent='\u20B9'+cfg.cost_per_km;
+  const dispPetrol=document.getElementById('disp-petrol-km'); if(dispPetrol)dispPetrol.textContent='\u20B9'+cfg.petrol_cost_per_km;
+  const dispDriver=document.getElementById('disp-driver'); if(dispDriver)dispDriver.textContent='\u20B9'+cfg.driver_cost;
   const badge=document.getElementById('machine-avail-badge');
   if(badge){badge.textContent=cfg.availability||'Available';badge.className='badge status-'+(cfg.availability||'available').toLowerCase().replace(' ','-');}
 }
 
 async function saveMachineConfig(e){
-  e.preventDefault(); // PREVENT PAGE RELOAD
+  e.preventDefault();
   const errEl=document.getElementById('machine-save-error');
   const btn=document.getElementById('machine-save-btn');
   if(errEl)errEl.style.display='none';
   btn.disabled=true; btn.textContent='Saving...';
-
   const machineName=document.getElementById('admin-machine-selector').value;
   const rate=parseFloat(document.getElementById('cfg-rate').value);
   const cpkm=parseFloat(document.getElementById('cfg-cpkm').value);
   const petrol=parseFloat(document.getElementById('cfg-petrol-km').value);
   const driver=parseFloat(document.getElementById('cfg-driver').value);
   const avail=document.getElementById('cfg-avail').value;
-
   if(!machineName||isNaN(rate)||isNaN(cpkm)||isNaN(petrol)||isNaN(driver)){
     if(errEl){errEl.textContent='Please fill all fields with valid numbers.';errEl.style.display='block';}
     btn.disabled=false; btn.textContent='Save Configuration'; return;
   }
-
   const existingRecord=allData.find(r=>r.type==='machine_config'&&r.machine_name===machineName);
   const configRecord={type:'machine_config',machine_name:machineName,rate_per_acre:rate,cost_per_km:cpkm,petrol_cost_per_km:petrol,driver_cost:driver,availability:avail,updated_at:new Date().toISOString()};
-
   let res;
   if(existingRecord&&(existingRecord.id||existingRecord.__backendId)){
     res=await window.dataSdk.update({...existingRecord,...configRecord});
   } else {
     res=await window.dataSdk.create(configRecord);
   }
-
   btn.disabled=false; btn.textContent='Save Configuration';
   if(res.isOk){
-    showToast(machineName+' configuration saved! ✅','success');
+    showToast(machineName+' configuration saved! \u2705','success');
     await fetchAllFromApi();
     onAdminMachineChange();
   } else {
@@ -681,18 +745,20 @@ async function renderAdminMachine(){
   onAdminMachineChange();
 }
 
+// FIX 1: Hide placeholder listEl when data exists, show container
 async function renderAdminUsers(){
   const listEl=document.getElementById('admin-users-list');
   const container=document.getElementById('admin-users-container');
+  if(listEl){listEl.style.display='';listEl.innerHTML='<div style="color:#6b7280;font-size:0.9rem;padding:1rem">\u23F3 Loading users...</div>';}
   try{
     const res=await fetch(`${API_BASE}/users`).then(r=>r.json());
     const users=res.isOk?res.data:allData.filter(r=>r.type==='user');
     if(!users.length){
-      if(listEl)listEl.innerHTML='<div style="text-align:center;padding:56px 16px;color:#9ca3af"><div style="font-size:3rem;margin-bottom:14px">👤</div><p style="font-size:15px">No users registered yet.</p></div>';
+      if(listEl){listEl.style.display='';listEl.innerHTML='<div style="text-align:center;padding:56px 16px;color:#9ca3af"><div style="font-size:3rem;margin-bottom:14px">\uD83D\uDC64</div><p style="font-size:15px">No users registered yet.</p></div>';}
       if(container){container.innerHTML='';container.style.display='none';}
       return;
     }
-    if(listEl)listEl.innerHTML='';
+    if(listEl)listEl.style.display='none';
     if(container){
       container.style.display='block';
       container.innerHTML=users.map(u=>
@@ -701,33 +767,38 @@ async function renderAdminUsers(){
         '<div style="font-family:\'Syne\',sans-serif;font-weight:700;font-size:16px;">'+u.user_name+'</div>'+
         '<div class="booking-meta" style="margin-top:4px;">'+u.user_email+' &nbsp;|&nbsp; '+u.user_phone+'</div>'+
         '</div>'+
-        '<span class="badge status-'+((u.status||'active').toLowerCase())+'">'+( u.status||'active')+'</span>'+
+        '<span class="badge status-'+((u.status||'active').toLowerCase())+'">'+(u.status||'active')+'</span>'+
         '</div>'
       ).join('');
     }
   }catch(e){
     const fallback=allData.filter(r=>r.type==='user');
-    if(listEl)listEl.innerHTML=fallback.length?'':
-      '<div style="text-align:center;padding:56px 16px;color:#9ca3af"><div style="font-size:3rem">👤</div><p>No users yet.</p></div>';
-    if(container&&fallback.length){
-      container.style.display='block';
-      container.innerHTML=fallback.map(u=>'<div class="user-card"><div><div style="font-family:\'Syne\',sans-serif;font-weight:700;">'+u.user_name+'</div><div class="booking-meta">'+u.user_email+'</div></div><span class="badge">'+( u.status||'active')+'</span></div>').join('');
+    if(!fallback.length){
+      if(listEl){listEl.style.display='';listEl.innerHTML='<div style="text-align:center;padding:56px 16px;color:#9ca3af"><div style="font-size:3rem">\uD83D\uDC64</div><p>No users yet.</p></div>';}
+    }else{
+      if(listEl)listEl.style.display='none';
+      if(container){
+        container.style.display='block';
+        container.innerHTML=fallback.map(u=>'<div class="user-card"><div><div style="font-family:\'Syne\',sans-serif;font-weight:700;">'+u.user_name+'</div><div class="booking-meta">'+u.user_email+'</div></div><span class="badge">'+(u.status||'active')+'</span></div>').join('');
+      }
     }
   }
 }
 
+// FIX 1: Same pattern for bookings
 async function renderAdminBookings(){
   const listEl=document.getElementById('admin-bookings-list');
   const container=document.getElementById('admin-bookings-container');
+  if(listEl){listEl.style.display='';listEl.innerHTML='<div style="color:#6b7280;font-size:0.9rem;padding:1rem">\u23F3 Loading bookings...</div>';}
   try{
     const res=await fetch(`${API_BASE}/bookings`).then(r=>r.json());
     const bookings=res.isOk?res.data:allData.filter(r=>r.type==='booking');
     if(!bookings.length){
-      if(listEl)listEl.innerHTML='<div style="text-align:center;padding:56px 16px;color:#9ca3af"><div style="font-size:3rem;margin-bottom:14px">📭</div><p style="font-size:15px">No bookings yet.</p></div>';
+      if(listEl){listEl.style.display='';listEl.innerHTML='<div style="text-align:center;padding:56px 16px;color:#9ca3af"><div style="font-size:3rem;margin-bottom:14px">\uD83D\uDCED</div><p style="font-size:15px">No bookings yet.</p></div>';}
       if(container){container.innerHTML='';container.style.display='none';}
       return;
     }
-    if(listEl)listEl.innerHTML='';
+    if(listEl)listEl.style.display='none';
     if(container){
       container.style.display='block';
       container.innerHTML=bookings.map(b=>{
@@ -736,10 +807,10 @@ async function renderAdminBookings(){
           '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'+
           '<div>'+
           '<div style="font-family:\'Syne\',sans-serif;font-weight:700;">'+b.user_name+' <span style="font-weight:400;font-size:13px;color:#6b7280;">('+b.user_email+')</span></div>'+
-          '<div class="booking-meta" style="margin-top:4px;">🚜 '+b.machine_name+' &nbsp;|&nbsp; 🌾 '+(b.crop_type||'-')+' &nbsp;|&nbsp; 📐 '+(b.acres||'-')+' acres &nbsp;|&nbsp; 💰 ₹'+((b.total_cost||0).toLocaleString('en-IN'))+'</div>'+
+          '<div class="booking-meta" style="margin-top:4px;">\uD83D\uDE9C '+b.machine_name+' &nbsp;|&nbsp; \uD83C\uDF3E '+(b.crop_type||'-')+' &nbsp;|&nbsp; \uD83D\uDCD0 '+(b.acres||'-')+' acres &nbsp;|&nbsp; \uD83D\uDCB0 \u20B9'+((b.total_cost||0).toLocaleString('en-IN'))+'</div>'+
           '</div>'+
           '<div style="display:flex;align-items:center;gap:8px;">'+
-          '<span class="badge status-'+((b.status||'pending').toLowerCase())+'">'+( b.status||'Pending')+'</span>'+
+          '<span class="badge status-'+((b.status||'pending').toLowerCase())+'">'+(b.status||'Pending')+'</span>'+
           '<select onchange="updateBookingStatus(\''+bid+'\',this.value)" class="form-input" style="padding:4px 8px;font-size:12px;width:auto;border-radius:6px;">'+
           '<option '+(b.status==='Pending'?'selected':'')+'>Pending</option>'+
           '<option '+(b.status==='Confirmed'?'selected':'')+'>Confirmed</option>'+
@@ -753,11 +824,14 @@ async function renderAdminBookings(){
     }
   }catch(e){
     const fallback=allData.filter(r=>r.type==='booking');
-    if(listEl)listEl.innerHTML=fallback.length?'':
-      '<div style="text-align:center;padding:56px 16px;color:#9ca3af"><div style="font-size:3rem">📭</div><p>No bookings yet.</p></div>';
-    if(container&&fallback.length){
-      container.style.display='block';
-      container.innerHTML=fallback.map(b=>'<div class="booking-card"><div style="font-family:\'Syne\',sans-serif;font-weight:700;">'+b.user_name+' — '+b.machine_name+'</div><span class="badge status-'+((b.status||'pending').toLowerCase())+'">'+( b.status||'Pending')+'</span></div>').join('');
+    if(!fallback.length){
+      if(listEl){listEl.style.display='';listEl.innerHTML='<div style="text-align:center;padding:56px 16px;color:#9ca3af"><div style="font-size:3rem">\uD83D\uDCED</div><p>No bookings yet.</p></div>';}
+    }else{
+      if(listEl)listEl.style.display='none';
+      if(container){
+        container.style.display='block';
+        container.innerHTML=fallback.map(b=>'<div class="booking-card"><div style="font-family:\'Syne\',sans-serif;font-weight:700;">'+b.user_name+' \u2014 '+b.machine_name+'</div><span class="badge status-'+((b.status||'pending').toLowerCase())+'">'+(b.status||'Pending')+'</span></div>').join('');
+      }
     }
   }
 }
@@ -779,10 +853,10 @@ function switchAdminTab(tab){
     if(p)p.style.display=(t===tab)?'':'none';
     if(b)b.classList.toggle('active',t===tab);
   });
-  if(tab==='machine')renderAdminMachine();
-  if(tab==='users')renderAdminUsers();
-  if(tab==='bookings')renderAdminBookings();
-  if(tab==='tracker')setTimeout(initFleetMap,200);
+  if(tab==='machine') renderAdminMachine();
+  if(tab==='users')   { if(document.getElementById('admin-users-list')) document.getElementById('admin-users-list').style.display=''; renderAdminUsers(); }
+  if(tab==='bookings'){ if(document.getElementById('admin-bookings-list')) document.getElementById('admin-bookings-list').style.display=''; renderAdminBookings(); }
+  if(tab==='tracker') setTimeout(initFleetMap,200);
 }
 
 // ===== INIT =====
