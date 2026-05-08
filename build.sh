@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 set -e
 
-echo ">>> Force-removing mysql-connector-python if present..."
-pip uninstall -y mysql-connector-python || true
-pip uninstall -y mysql-connector || true
+echo "=== AgroBook Build ==="
+echo "Python: $(python --version)"
 
-echo ">>> Installing requirements..."
-pip install --no-cache-dir -r requirements.txt
+# Nuke old MySQL connector completely
+pip uninstall -y mysql-connector-python mysql-connector mysql-connector-python-rf 2>/dev/null || true
 
-echo ">>> Build complete. Installed packages:"
+# Fresh install with no cache
+pip install --no-cache-dir --force-reinstall -r requirements.txt
+
+echo "=== Installed packages ==="
 pip list | grep -iE 'pymysql|mysql|flask|cryptography|gunicorn'
+echo "=== Build done ==="

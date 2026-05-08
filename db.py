@@ -1,16 +1,24 @@
 import os
+import socket
 import pymysql
 import pymysql.cursors
 
 
+def _resolve_host(host):
+    """
+    Resolve hostname to a raw IPv4 address string.
+    This completely bypasses Python's IDNA encoder, which crashes on
+    cloud MySQL hostnames longer than 63 characters (Aiven, Railway, etc).
+    If resolution fails, the original hostname is returned as-is.
+    """
+    try:
+        return socket.gethostbyname(host)
+    except Exception:
+        return host
+
+
 def get_db_connection():
-    """
-    Returns a live PyMySQL connection with all tables created if missing.
-    - Does NOT attempt CREATE DATABASE (no permission on cloud MySQL)
-    - Uses the database name from MYSQL_DATABASE env var directly
-    - SSL: only passed when MYSQL_SSL_CA is set or MYSQL_SSL_DISABLED != true
-    """
-    host     = os.getenv('MYSQL_HOST', 'localhost')
+    host     = _resolve_host(os.getenv('MYSQL_HOST', 'localhost'))
     port     = int(os.getenv('MYSQL_PORT', 3306))
     user     = os.getenv('MYSQL_USER', 'root')
     password = os.getenv('MYSQL_PASSWORD', '')
@@ -31,7 +39,6 @@ def get_db_connection():
         connect_timeout=15,
     )
 
-    # Only add SSL when not disabled and CA cert path is provided
     if not ssl_disabled and ssl_ca:
         connect_kwargs['ssl'] = {'ca': ssl_ca}
 
