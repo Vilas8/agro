@@ -1,24 +1,52 @@
 import os
 import socket
-import pymysql
-import pymysql.cursors
+import encodings.idna as _idna_mod
+
+# -----------------------------------------------------------------------
+# PERMANENT FIX FOR: 'idna' codec can't encode characters in position 0-67: label too long
+#
+# Cloud MySQL hostnames (Aiven, Railway, etc.) are >63 chars.
+# Python's built-in IDNA codec enforces RFC 3490 63-char label limit.
+# mysql-connector-python routes ALL hostnames through this codec.
+#
+# TWO-LAYER fix applied here at import time — before any driver loads:
+#   1. Monkey-patch the IDNA codec to remove the length check.
+#   2. Also resolve hostname → raw IP via socket.gethostbyname().
+#      An IP address is never IDNA-encoded by any driver.
+# -----------------------------------------------------------------------
+
+def _patched_label_to_ascii(label, allow_leading_hyphen=False):
+    """IDNA label encoder with the 63-char limit removed."""
+    if isinstance(label, str):
+        label = label.encode('ascii', 'strict')
+    if label.startswith(b'xn--'):
+        return label
+    import encodings.idna as _i
+    label = _i.nameprep(label.decode('utf-8'))
+    label = label.encode('ascii')
+    return label
+
+try:
+    _idna_mod.ToASCII = _patched_label_to_ascii
+except Exception:
+    pass
 
 
-def _resolve_host(host):
-    """
-    Resolve hostname to a raw IPv4 address string.
-    This completely bypasses Python's IDNA encoder, which crashes on
-    cloud MySQL hostnames longer than 63 characters (Aiven, Railway, etc).
-    If resolution fails, the original hostname is returned as-is.
-    """
+def _resolve_to_ip(host):
+    """Convert hostname to raw IPv4 — IP strings skip IDNA encoding in every driver."""
     try:
         return socket.gethostbyname(host)
     except Exception:
         return host
 
 
+import pymysql
+import pymysql.cursors
+
+
 def get_db_connection():
-    host     = _resolve_host(os.getenv('MYSQL_HOST', 'localhost'))
+    raw_host = os.getenv('MYSQL_HOST', 'localhost')
+    host     = _resolve_to_ip(raw_host)
     port     = int(os.getenv('MYSQL_PORT', 3306))
     user     = os.getenv('MYSQL_USER', 'root')
     password = os.getenv('MYSQL_PASSWORD', '')
@@ -45,7 +73,6 @@ def get_db_connection():
     conn = pymysql.connect(**connect_kwargs)
 
     with conn.cursor(pymysql.cursors.Cursor) as cur:
-
         cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id            INT AUTO_INCREMENT PRIMARY KEY,
@@ -58,7 +85,6 @@ def get_db_connection():
             updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
-
         cur.execute("""
         CREATE TABLE IF NOT EXISTS machine_configs (
             id                 INT AUTO_INCREMENT PRIMARY KEY,
@@ -74,7 +100,6 @@ def get_db_connection():
             updated_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
-
         cur.execute("""
         CREATE TABLE IF NOT EXISTS bookings (
             id              INT AUTO_INCREMENT PRIMARY KEY,
@@ -97,7 +122,6 @@ def get_db_connection():
             updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
-
         cur.execute("""
         CREATE TABLE IF NOT EXISTS machine_locations (
             id              INT AUTO_INCREMENT PRIMARY KEY,
@@ -114,7 +138,6 @@ def get_db_connection():
             INDEX idx_created_at   (created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
-
         cur.execute("""
         CREATE TABLE IF NOT EXISTS geofence_alerts (
             id           INT AUTO_INCREMENT PRIMARY KEY,
@@ -128,7 +151,6 @@ def get_db_connection():
             created_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
-
         conn.commit()
 
     return conn
