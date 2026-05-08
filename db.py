@@ -5,58 +5,40 @@ import pymysql.cursors
 
 def get_db_connection():
     """
-    Returns a PyMySQL connection already switched into the `agrimachine`
-    database (created on first run if it does not exist yet).
-
-    PyMySQL is used instead of mysql-connector-python because the latter
-    uses Python's IDNA encoder when resolving hostnames, which raises
-    'label too long' on cloud-managed MySQL hosts (Aiven, Railway,
-    Render, PlanetScale, etc.) whose hostnames exceed 63 chars.
-    PyMySQL passes the hostname directly to the OS socket layer.
+    Returns a live PyMySQL connection with all tables created if missing.
+    - Does NOT attempt CREATE DATABASE (no permission on cloud MySQL)
+    - Uses the database name from MYSQL_DATABASE env var directly
+    - SSL: only passed when MYSQL_SSL_CA is set or MYSQL_SSL_DISABLED != true
     """
     host     = os.getenv('MYSQL_HOST', 'localhost')
     port     = int(os.getenv('MYSQL_PORT', 3306))
     user     = os.getenv('MYSQL_USER', 'root')
     password = os.getenv('MYSQL_PASSWORD', '')
-    database = os.getenv('MYSQL_DATABASE', 'defaultdb')
+    db_name  = os.getenv('MYSQL_DATABASE', 'defaultdb')
 
     ssl_disabled = os.getenv('MYSQL_SSL_DISABLED', 'false').lower() == 'true'
     ssl_ca       = os.getenv('MYSQL_SSL_CA', None)
-
-    ssl_config = None
-    if not ssl_disabled:
-        ssl_config = {'ca': ssl_ca} if ssl_ca else True
 
     connect_kwargs = dict(
         host=host,
         port=port,
         user=user,
         password=password,
-        database=database,
+        database=db_name,
         charset='utf8mb4',
         cursorclass=pymysql.cursors.DictCursor,
         autocommit=False,
         connect_timeout=15,
     )
-    if ssl_config is not None:
-        connect_kwargs['ssl'] = ssl_config
+
+    # Only add SSL when not disabled and CA cert path is provided
+    if not ssl_disabled and ssl_ca:
+        connect_kwargs['ssl'] = {'ca': ssl_ca}
 
     conn = pymysql.connect(**connect_kwargs)
 
-    # Use a plain (non-dict) cursor just for schema setup
     with conn.cursor(pymysql.cursors.Cursor) as cur:
 
-        # Create and select the working database
-        # NOTE: CHARACTER SET keyword is required — bare charset name is not valid SQL
-        cur.execute(
-            'CREATE DATABASE IF NOT EXISTS agrimachine '
-            'CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
-        )
-        cur.execute('USE agrimachine')
-
-        # ---------------------------------------------------------------- #
-        #  Users                                                            #
-        # ---------------------------------------------------------------- #
         cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id            INT AUTO_INCREMENT PRIMARY KEY,
@@ -70,9 +52,6 @@ def get_db_connection():
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
 
-        # ---------------------------------------------------------------- #
-        #  Machine configs                                                  #
-        # ---------------------------------------------------------------- #
         cur.execute("""
         CREATE TABLE IF NOT EXISTS machine_configs (
             id                 INT AUTO_INCREMENT PRIMARY KEY,
@@ -89,9 +68,6 @@ def get_db_connection():
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
 
-        # ---------------------------------------------------------------- #
-        #  Bookings                                                         #
-        # ---------------------------------------------------------------- #
         cur.execute("""
         CREATE TABLE IF NOT EXISTS bookings (
             id              INT AUTO_INCREMENT PRIMARY KEY,
@@ -115,9 +91,6 @@ def get_db_connection():
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
 
-        # ---------------------------------------------------------------- #
-        #  GPS machine_locations                                            #
-        # ---------------------------------------------------------------- #
         cur.execute("""
         CREATE TABLE IF NOT EXISTS machine_locations (
             id              INT AUTO_INCREMENT PRIMARY KEY,
@@ -135,9 +108,6 @@ def get_db_connection():
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
 
-        # ---------------------------------------------------------------- #
-        #  Geofence alerts                                                  #
-        # ---------------------------------------------------------------- #
         cur.execute("""
         CREATE TABLE IF NOT EXISTS geofence_alerts (
             id           INT AUTO_INCREMENT PRIMARY KEY,
@@ -153,5 +123,5 @@ def get_db_connection():
         """)
 
         conn.commit()
-    # cursor closed by context manager; return connection (DictCursor is default for app queries)
+
     return conn
