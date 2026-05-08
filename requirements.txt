@@ -1,3 +1,4 @@
+# v3 - PyMySQL replaces mysql-connector-python (IDNA hostname fix)
 flask==3.0.3
 flask-cors==5.0.0
 PyMySQL==1.1.1
