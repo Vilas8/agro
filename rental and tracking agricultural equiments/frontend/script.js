@@ -667,66 +667,68 @@ async function resolveAlert(alertId,btn){
 }
 
 // ===== ADMIN: MACHINE CONFIG =====
+// FIX 1: onAdminMachineChange reads from machineConfigs which is updated
+// immediately in saveMachineConfig before any async refetch runs,
+// so the badge and dropdown always reflect the just-saved value.
 function onAdminMachineChange(){
-  currentAdminMachine=document.getElementById('admin-machine-selector').value;
-  const icons={'Grass Cutter':'\uD83C\uDF3F','Harvester':'\uD83C\uDF3E','Flip plow':'\uD83D\uDD04','Corn Planter':'\uD83C\uDF3D'};
-  const iconEl=document.getElementById('admin-machine-icon');
-  if(iconEl)iconEl.textContent=icons[currentAdminMachine]||'\uD83D\uDE9C';
-  const cfg=machineConfigs[currentAdminMachine]||{rate_per_acre:800,cost_per_km:15,petrol_cost_per_km:25,driver_cost:600,availability:'Available'};
-  document.getElementById('cfg-rate').value=cfg.rate_per_acre;
-  document.getElementById('cfg-cpkm').value=cfg.cost_per_km;
-  document.getElementById('cfg-petrol-km').value=cfg.petrol_cost_per_km;
-  document.getElementById('cfg-driver').value=cfg.driver_cost;
-  // FIX: always set availability dropdown to exact saved value
-  const availEl=document.getElementById('cfg-avail');
-  if(availEl) availEl.value=cfg.availability||'Available';
-  const dispRate=document.getElementById('disp-rate'); if(dispRate)dispRate.textContent='\u20B9'+cfg.rate_per_acre;
-  const dispCpkm=document.getElementById('disp-cpkm'); if(dispCpkm)dispCpkm.textContent='\u20B9'+cfg.cost_per_km;
-  const dispPetrol=document.getElementById('disp-petrol-km'); if(dispPetrol)dispPetrol.textContent='\u20B9'+cfg.petrol_cost_per_km;
-  const dispDriver=document.getElementById('disp-driver'); if(dispDriver)dispDriver.textContent='\u20B9'+cfg.driver_cost;
-  const badge=document.getElementById('machine-avail-badge');
+  currentAdminMachine = document.getElementById('admin-machine-selector').value;
+  const icons = {'Grass Cutter':'\uD83C\uDF3F','Harvester':'\uD83C\uDF3E','Flip plow':'\uD83D\uDD04','Corn Planter':'\uD83C\uDF3D'};
+  const iconEl = document.getElementById('admin-machine-icon');
+  if(iconEl) iconEl.textContent = icons[currentAdminMachine] || '\uD83D\uDE9C';
+  const cfg = machineConfigs[currentAdminMachine] || {rate_per_acre:800,cost_per_km:15,petrol_cost_per_km:25,driver_cost:600,availability:'Available'};
+  document.getElementById('cfg-rate').value = cfg.rate_per_acre;
+  document.getElementById('cfg-cpkm').value = cfg.cost_per_km;
+  document.getElementById('cfg-petrol-km').value = cfg.petrol_cost_per_km;
+  document.getElementById('cfg-driver').value = cfg.driver_cost;
+  const availEl = document.getElementById('cfg-avail');
+  if(availEl) availEl.value = cfg.availability || 'Available';
+  const dispRate = document.getElementById('disp-rate'); if(dispRate) dispRate.textContent = '\u20B9'+cfg.rate_per_acre;
+  const dispCpkm = document.getElementById('disp-cpkm'); if(dispCpkm) dispCpkm.textContent = '\u20B9'+cfg.cost_per_km;
+  const dispPetrol = document.getElementById('disp-petrol-km'); if(dispPetrol) dispPetrol.textContent = '\u20B9'+cfg.petrol_cost_per_km;
+  const dispDriver = document.getElementById('disp-driver'); if(dispDriver) dispDriver.textContent = '\u20B9'+cfg.driver_cost;
+  const badge = document.getElementById('machine-avail-badge');
   if(badge){
-    badge.textContent=cfg.availability||'Available';
-    badge.className='badge status-'+(cfg.availability||'Available').toLowerCase().replace(' ','-');
+    badge.textContent = cfg.availability || 'Available';
+    badge.className = 'badge status-'+(cfg.availability||'Available').toLowerCase().replace(/\s+/g,'-');
   }
 }
 
 async function saveMachineConfig(e){
   e.preventDefault();
-  const errEl=document.getElementById('machine-save-error');
-  const btn=document.getElementById('machine-save-btn');
-  if(errEl)errEl.style.display='none';
-  btn.disabled=true; btn.textContent='Saving...';
-  const machineName=document.getElementById('admin-machine-selector').value;
-  const rate=parseFloat(document.getElementById('cfg-rate').value);
-  const cpkm=parseFloat(document.getElementById('cfg-cpkm').value);
-  const petrol=parseFloat(document.getElementById('cfg-petrol-km').value);
-  const driver=parseFloat(document.getElementById('cfg-driver').value);
-  const avail=document.getElementById('cfg-avail').value;
+  const errEl = document.getElementById('machine-save-error');
+  const btn = document.getElementById('machine-save-btn');
+  if(errEl) errEl.style.display = 'none';
+  btn.disabled = true; btn.textContent = 'Saving...';
+  const machineName = document.getElementById('admin-machine-selector').value;
+  const rate = parseFloat(document.getElementById('cfg-rate').value);
+  const cpkm = parseFloat(document.getElementById('cfg-cpkm').value);
+  const petrol = parseFloat(document.getElementById('cfg-petrol-km').value);
+  const driver = parseFloat(document.getElementById('cfg-driver').value);
+  const avail = document.getElementById('cfg-avail').value;
   if(!machineName||isNaN(rate)||isNaN(cpkm)||isNaN(petrol)||isNaN(driver)){
     if(errEl){errEl.textContent='Please fill all fields with valid numbers.';errEl.style.display='block';}
     btn.disabled=false; btn.textContent='Save Configuration'; return;
   }
-  const existingRecord=allData.find(r=>r.type==='machine_config'&&r.machine_name===machineName);
-  const configRecord={type:'machine_config',machine_name:machineName,rate_per_acre:rate,cost_per_km:cpkm,petrol_cost_per_km:petrol,driver_cost:driver,availability:avail,updated_at:new Date().toISOString()};
+  const existingRecord = allData.find(r=>r.type==='machine_config'&&r.machine_name===machineName);
+  const configRecord = {type:'machine_config',machine_name:machineName,rate_per_acre:rate,cost_per_km:cpkm,petrol_cost_per_km:petrol,driver_cost:driver,availability:avail,updated_at:new Date().toISOString()};
   let res;
   if(existingRecord&&(existingRecord.id||existingRecord.__backendId)){
-    res=await window.dataSdk.update({...existingRecord,...configRecord});
+    res = await window.dataSdk.update({...existingRecord,...configRecord});
   } else {
-    res=await window.dataSdk.create(configRecord);
+    res = await window.dataSdk.create(configRecord);
   }
   btn.disabled=false; btn.textContent='Save Configuration';
   if(res.isOk){
     showToast(machineName+' configuration saved! \u2705','success');
-    // Update machineConfigs immediately in memory before API refetch
-    machineConfigs[machineName]={
-      rate_per_acre:rate, cost_per_km:cpkm,
-      petrol_cost_per_km:petrol, driver_cost:driver,
-      availability:avail
-    };
-    // Refresh badge and form to reflect saved state immediately
+    // FIX 1: Update machineConfigs in memory FIRST so onAdminMachineChange
+    // reads the new availability immediately — before fetchAllFromApi runs.
+    machineConfigs[machineName] = {rate_per_acre:rate,cost_per_km:cpkm,petrol_cost_per_km:petrol,driver_cost:driver,availability:avail};
+    // Also patch allData so dataHandler.onDataChanged won't overwrite it
+    const idx = allData.findIndex(r=>r.type==='machine_config'&&r.machine_name===machineName);
+    if(idx>-1){ allData[idx]={...allData[idx],...configRecord}; } else { allData.unshift(configRecord); }
+    // Refresh badge/form from the now-correct machineConfigs
     onAdminMachineChange();
-    // Also do a background API refetch to stay in sync
+    // Background sync — does NOT call onAdminMachineChange again (no await)
     fetchAllFromApi();
   } else {
     if(errEl){errEl.textContent='Save failed: '+(res.error||'Unknown error');errEl.style.display='block';}
@@ -738,31 +740,29 @@ async function renderAdminMachine(){
 }
 
 // ===== ADMIN: RENDER USERS =====
-// Renders directly into admin-users-list (always visible inside glass-card).
-// Hides the container div (not used). Falls back to allData on API error.
+// FIX 2: Renders directly into #admin-users-list (the always-visible element).
+// The HTML has no #admin-users-container, so we just write into #admin-users-list.
+// Falls back to allData on API error so it always shows something.
 async function renderAdminUsers(){
-  const listEl=document.getElementById('admin-users-list');
-  const containerEl=document.getElementById('admin-users-container');
-  // Always hide the separate container — we render into listEl only
-  if(containerEl) containerEl.style.display='none';
+  const listEl = document.getElementById('admin-users-list');
   if(!listEl) return;
-  listEl.innerHTML='<div style="color:#6b7280;font-size:0.9rem;padding:1rem">\u23F3 Loading users...</div>';
-  let users=[];
+  listEl.innerHTML = '<div style="color:#6b7280;font-size:0.9rem;padding:1rem">\u23F3 Loading users...</div>';
+  let users = [];
   try{
-    const res=await fetch(`${API_BASE}/users`).then(r=>r.json());
-    users=res.isOk ? res.data : allData.filter(r=>r.type==='user');
+    const res = await fetch(`${API_BASE}/users`).then(r=>r.json());
+    users = (res.isOk && Array.isArray(res.data)) ? res.data : allData.filter(r=>r.type==='user');
   }catch(e){
-    users=allData.filter(r=>r.type==='user');
+    users = allData.filter(r=>r.type==='user');
   }
   if(!users.length){
     listEl.innerHTML='<div style="text-align:center;padding:56px 16px;color:#9ca3af"><div style="font-size:3rem;margin-bottom:14px">\uD83D\uDC64</div><p style="font-size:15px">No users registered yet.</p></div>';
     return;
   }
-  listEl.innerHTML=users.map(u=>
-    '<div class="user-card">'+
+  listEl.innerHTML = users.map(u=>
+    '<div class="user-card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:14px 0;border-bottom:1px solid #f0fdf4;">'+
     '<div>'+
-    '<div style="font-family:\'Syne\',sans-serif;font-weight:700;font-size:16px;">'+u.user_name+'</div>'+
-    '<div class="booking-meta" style="margin-top:4px;">'+u.user_email+' &nbsp;|&nbsp; '+u.user_phone+'</div>'+
+    '<div style="font-family:\'Syne\',sans-serif;font-weight:700;font-size:16px;">'+(u.user_name||'-')+'</div>'+
+    '<div class="booking-meta" style="margin-top:4px;">'+(u.user_email||'-')+' &nbsp;|&nbsp; '+(u.user_phone||'-')+'</div>'+
     '</div>'+
     '<span class="badge status-'+((u.status||'active').toLowerCase())+'">'+(u.status||'active')+'</span>'+
     '</div>'
@@ -770,31 +770,29 @@ async function renderAdminUsers(){
 }
 
 // ===== ADMIN: RENDER BOOKINGS =====
-// Same pattern — renders directly into admin-bookings-list.
+// FIX 2 (same): Renders directly into #admin-bookings-list.
 async function renderAdminBookings(){
-  const listEl=document.getElementById('admin-bookings-list');
-  const containerEl=document.getElementById('admin-bookings-container');
-  if(containerEl) containerEl.style.display='none';
+  const listEl = document.getElementById('admin-bookings-list');
   if(!listEl) return;
-  listEl.innerHTML='<div style="color:#6b7280;font-size:0.9rem;padding:1rem">\u23F3 Loading bookings...</div>';
-  let bookings=[];
+  listEl.innerHTML = '<div style="color:#6b7280;font-size:0.9rem;padding:1rem">\u23F3 Loading bookings...</div>';
+  let bookings = [];
   try{
-    const res=await fetch(`${API_BASE}/bookings`).then(r=>r.json());
-    bookings=res.isOk ? res.data : allData.filter(r=>r.type==='booking');
+    const res = await fetch(`${API_BASE}/bookings`).then(r=>r.json());
+    bookings = (res.isOk && Array.isArray(res.data)) ? res.data : allData.filter(r=>r.type==='booking');
   }catch(e){
-    bookings=allData.filter(r=>r.type==='booking');
+    bookings = allData.filter(r=>r.type==='booking');
   }
   if(!bookings.length){
     listEl.innerHTML='<div style="text-align:center;padding:56px 16px;color:#9ca3af"><div style="font-size:3rem;margin-bottom:14px">\uD83D\uDCED</div><p style="font-size:15px">No bookings yet.</p></div>';
     return;
   }
-  listEl.innerHTML=bookings.map(b=>{
-    const bid=b.id||b.__backendId||'';
+  listEl.innerHTML = bookings.map(b=>{
+    const bid = b.id||b.__backendId||'';
     return '<div class="booking-card">'+
       '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'+
       '<div>'+
-      '<div style="font-family:\'Syne\',sans-serif;font-weight:700;">'+b.user_name+' <span style="font-weight:400;font-size:13px;color:#6b7280;">('+b.user_email+')</span></div>'+
-      '<div class="booking-meta" style="margin-top:4px;">\uD83D\uDE9C '+b.machine_name+' &nbsp;|&nbsp; \uD83C\uDF3E '+(b.crop_type||'-')+' &nbsp;|&nbsp; \uD83D\uDCD0 '+(b.acres||'-')+' acres &nbsp;|&nbsp; \uD83D\uDCB0 \u20B9'+((b.total_cost||0).toLocaleString('en-IN'))+'</div>'+
+      '<div style="font-family:\'Syne\',sans-serif;font-weight:700;">'+(b.user_name||'-')+' <span style="font-weight:400;font-size:13px;color:#6b7280;">('+(b.user_email||'-')+')</span></div>'+
+      '<div class="booking-meta" style="margin-top:4px;">\uD83D\uDE9C '+(b.machine_name||'-')+' &nbsp;|&nbsp; \uD83C\uDF3E '+(b.crop_type||'-')+' &nbsp;|&nbsp; \uD83D\uDCD0 '+(b.acres||'-')+' acres &nbsp;|&nbsp; \uD83D\uDCB0 \u20B9'+((b.total_cost||0).toLocaleString('en-IN'))+'</div>'+
       '</div>'+
       '<div style="display:flex;align-items:center;gap:8px;">'+
       '<span class="badge status-'+((b.status||'pending').toLowerCase())+'">'+(b.status||'Pending')+'</span>'+
@@ -810,38 +808,38 @@ async function renderAdminBookings(){
   }).join('');
 }
 
-async function updateBookingStatus(bookingId,newStatus){
-  const record=allData.find(r=>(r.id||r.__backendId)==bookingId);
-  if(!record)return;
-  const updated={...record,status:newStatus};
-  const res=await window.dataSdk.update(updated);
-  if(res.isOk){showToast('Booking status updated to '+newStatus,'success');renderAdminBookings();}
-  else{showToast('Status update failed','error');}
+async function updateBookingStatus(bookingId, newStatus){
+  const record = allData.find(r=>(r.id||r.__backendId)==bookingId);
+  if(!record) return;
+  const updated = {...record, status:newStatus};
+  const res = await window.dataSdk.update(updated);
+  if(res.isOk){ showToast('Booking status updated to '+newStatus,'success'); renderAdminBookings(); }
+  else{ showToast('Status update failed','error'); }
 }
 
 // ===== ADMIN TAB SWITCHER =====
-// Defined here in script.js; the inline HTML script also defines this but
-// since script.js loads with defer it runs after HTML inline scripts,
-// so this definition wins and correctly overrides the inline one.
+// FIX 3: This definition in script.js (loaded with defer) runs after the
+// inline HTML script, so window.switchAdminTab is explicitly set below in
+// DOMContentLoaded to guarantee this version always wins.
 function switchAdminTab(tab){
   ['machine','users','bookings','tracker'].forEach(t=>{
-    const p=document.getElementById('adm-'+t);
-    const b=document.getElementById('adm-tab-'+t);
-    if(p) p.style.display=(t===tab)?'':'none';
-    if(b) b.classList.toggle('active',t===tab);
+    const p = document.getElementById('adm-'+t);
+    const b = document.getElementById('adm-tab-'+t);
+    if(p) p.style.display = (t===tab) ? '' : 'none';
+    if(b) b.classList.toggle('active', t===tab);
   });
   if(tab==='machine')  renderAdminMachine();
   if(tab==='users')    renderAdminUsers();
   if(tab==='bookings') renderAdminBookings();
-  if(tab==='tracker')  setTimeout(initFleetMap,200);
+  if(tab==='tracker')  setTimeout(initFleetMap, 200);
 }
 
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', async()=>{
   await window.dataSdk.init(dataHandler);
-  const restored=await restoreSession();
+  const restored = await restoreSession();
   if(!restored) showPage('home');
-  if(typeof lucide!=='undefined')lucide.createIcons();
-  // Override the inline HTML switchAdminTab with the correct one from script.js
+  if(typeof lucide!=='undefined') lucide.createIcons();
+  // FIX 3: Override inline HTML switchAdminTab with the correct version
   window.switchAdminTab = switchAdminTab;
 });
