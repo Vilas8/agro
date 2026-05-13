@@ -2,19 +2,6 @@ import os
 import socket
 import encodings.idna as _idna_mod
 
-# -----------------------------------------------------------------------
-# PERMANENT FIX FOR: 'idna' codec can't encode characters in position 0-67: label too long
-#
-# Cloud MySQL hostnames (Aiven, Railway, etc.) are >63 chars.
-# Python's built-in IDNA codec enforces RFC 3490 63-char label limit.
-# mysql-connector-python routes ALL hostnames through this codec.
-#
-# TWO-LAYER fix applied here at import time — before any driver loads:
-#   1. Monkey-patch the IDNA codec to remove the length check.
-#   2. Also resolve hostname → raw IP via socket.gethostbyname().
-#      An IP address is never IDNA-encoded by any driver.
-# -----------------------------------------------------------------------
-
 def _patched_label_to_ascii(label, allow_leading_hyphen=False):
     """IDNA label encoder with the 63-char limit removed."""
     if isinstance(label, str):
@@ -33,7 +20,6 @@ except Exception:
 
 
 def _resolve_to_ip(host):
-    """Convert hostname to raw IPv4 — IP strings skip IDNA encoding in every driver."""
     try:
         return socket.gethostbyname(host)
     except Exception:
@@ -56,11 +42,7 @@ def get_db_connection():
     ssl_ca       = os.getenv('MYSQL_SSL_CA', None)
 
     connect_kwargs = dict(
-        host=host,
-        port=port,
-        user=user,
-        password=password,
-        database=db_name,
+        host=host, port=port, user=user, password=password, database=db_name,
         charset='utf8mb4',
         cursorclass=pymysql.cursors.DictCursor,
         autocommit=False,
@@ -80,11 +62,27 @@ def get_db_connection():
             user_email    VARCHAR(255) UNIQUE,
             user_phone    VARCHAR(20),
             user_password VARCHAR(255),
+            profile_photo TEXT DEFAULT NULL,
+            address       VARCHAR(500) DEFAULT NULL,
+            village       VARCHAR(100) DEFAULT NULL,
+            district      VARCHAR(100) DEFAULT 'Kolar',
             status        ENUM('active','inactive') DEFAULT 'active',
             created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
+        # Add new profile columns if they don't exist (safe ALTER)
+        for col, defn in [
+            ('profile_photo', 'TEXT DEFAULT NULL'),
+            ('address',       'VARCHAR(500) DEFAULT NULL'),
+            ('village',       'VARCHAR(100) DEFAULT NULL'),
+            ('district',      "VARCHAR(100) DEFAULT 'Kolar'"),
+        ]:
+            try:
+                cur.execute(f'ALTER TABLE users ADD COLUMN {col} {defn}')
+            except Exception:
+                pass  # column already exists
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS machine_configs (
             id                 INT AUTO_INCREMENT PRIMARY KEY,
@@ -149,6 +147,26 @@ def get_db_connection():
             message      TEXT,
             resolved     TINYINT(1)   DEFAULT 0,
             created_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+        # NEW: delivery routes for live tracking simulation
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS delivery_routes (
+            id              INT AUTO_INCREMENT PRIMARY KEY,
+            booking_id      INT           DEFAULT NULL,
+            machine_name    VARCHAR(100)  NOT NULL,
+            start_lat       DECIMAL(10,7) NOT NULL,
+            start_lng       DECIMAL(10,7) NOT NULL,
+            dest_lat        DECIMAL(10,7) NOT NULL,
+            dest_lng        DECIMAL(10,7) NOT NULL,
+            total_dist_km   DECIMAL(8,2)  DEFAULT 0,
+            eta_minutes     INT           DEFAULT 0,
+            waypoints_json  LONGTEXT      DEFAULT NULL,
+            status          ENUM('InProgress','Delivered','Cancelled') DEFAULT 'InProgress',
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_booking_id   (booking_id),
+            INDEX idx_machine_name (machine_name)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
         conn.commit()
