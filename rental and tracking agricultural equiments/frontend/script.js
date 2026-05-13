@@ -17,6 +17,27 @@ let fleetMarkers = {};
 let userLocationMap = null;
 let gpsRefreshTimer = null;
 
+// Tracking simulation globals
+let trackingMap = null;
+let trackingMarker = null;
+let trackingRoute = [];
+let trackingIndex = 0;
+let trackingTimer = null;
+let trackingPolyline = null;
+let travelledPolyline = null;
+
+// ===== BASE MACHINE LOCATIONS (near Kolar) =====
+const MACHINE_BASE_LOCATIONS = {
+  'Grass Cutter':  { lat: 13.1370, lng: 78.1335, label: 'Kolar North Depot' },
+  'Harvester':     { lat: 13.1390, lng: 78.1355, label: 'Kolar East Yard' },
+  'Flip plow':     { lat: 13.1330, lng: 78.1360, label: 'Kolar South Shed' },
+  'Corn Planter':  { lat: 13.1310, lng: 78.1310, label: 'Kolar West Farm' },
+  'Rotavator':     { lat: 13.1350, lng: 78.1290, label: 'Kolar Central Base' },
+  'Paddy Planter': { lat: 13.1400, lng: 78.1300, label: 'Kolar North Farm' },
+  'Sprayer':       { lat: 13.1285, lng: 78.1370, label: 'Kolar South Farm' },
+  'Cultivator':    { lat: 13.1420, lng: 78.1380, label: 'Kolar East Farm' }
+};
+
 // ===== KARNATAKA DISTRICTS + VILLAGES =====
 const KA_DISTRICTS = {
   'Kolar': ['Kolar Town','Bangarpet','Malur','Mulbagal','KGF (Kolar Gold Fields)','Srinivaspur','Gudibande','Chintamani'],
@@ -96,7 +117,6 @@ async function fetchAllFromApi() {
     const merged = [...users, ...machines, ...bookings];
     allData = merged;
     recordCount = merged.length;
-    // Rebuild machineConfigs from the fresh DB data
     machineConfigs = {};
     machines.forEach(m => {
       machineConfigs[m.machine_name] = {
@@ -123,7 +143,7 @@ function getApiCollection(type) {
   return map[(type||'').toLowerCase()] || 'bookings';
 }
 
-// ===== SDK — all ops go directly to the DB via the API =====
+// ===== SDK =====
 window.dataSdk = {
   async create(record) {
     try {
@@ -144,7 +164,6 @@ window.dataSdk = {
     }
   },
   async init(handler) {
-    // Load fresh DB data on boot; handler kept for compatibility
     await fetchAllFromApi();
     return { isOk: true };
   },
@@ -279,7 +298,6 @@ function showPage(name) {
         renderUserBookings();
       }
       if (name === 'admin-dashboard') {
-        // Always fetch fresh DB data first, then render all three tabs
         fetchAllFromApi().then(() => {
           renderAdminMachine();
           renderAdminUsers();
@@ -327,7 +345,6 @@ async function handleRegister(e) {
     errEl.textContent='Weak password \u2014 8+ chars, upper, lower, number, special char.';
     errEl.style.display='block'; return;
   }
-  // Check duplicate email directly from DB
   await fetchAllFromApi();
   if (allData.find(r => r.type==='user' && r.user_email===email)) {
     btn.disabled=false; btn.textContent='Create Account';
@@ -356,7 +373,6 @@ async function handleLogin(e) {
   const errEl = document.getElementById('login-error'); errEl.style.display = 'none';
   const btn   = document.getElementById('login-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Logging in...'; }
-  // Always fetch fresh users from DB before matching
   await fetchAllFromApi();
   if (btn) { btn.disabled = false; btn.textContent = 'Login'; }
   const user = allData.find(r => r.type==='user' && r.user_email===email && r.user_password===pass);
@@ -391,6 +407,7 @@ function logout() {
   currentUser = null; isAdmin = false;
   localStorage.removeItem('agrobook_session');
   stopGpsRefresh();
+  stopTracking();
   showToast('Logged out successfully.', 'success');
   showPage('home');
 }
@@ -448,11 +465,18 @@ async function autoFillDistanceFromGPS() {
     const userLat = pos.coords.latitude, userLng = pos.coords.longitude;
     const machineType = document.getElementById('machine-type').value;
     if (!machineType) { showToast('Select a machine type first','error'); return; }
+    // Use base location from MACHINE_BASE_LOCATIONS
+    const base = MACHINE_BASE_LOCATIONS[machineType] || { lat:13.135, lng:78.132 };
     try {
-      const locRes = await fetch(`${API_BASE}/location/${encodeURIComponent(machineType)}`).then(r => r.json());
-      const base   = locRes.isOk && locRes.data.length ? locRes.data[0] : { lat:13.135, lng:78.132 };
-      const distRes = await fetch(`${API_BASE}/distance?lat1=${base.lat}&lng1=${base.lng}&lat2=${userLat}&lng2=${userLng}`).then(r => r.json());
-      if (distRes.isOk) { document.getElementById('distance-km').value = distRes.distance_km; showToast('Distance: ' + distRes.distance_km + ' km \uD83D\uDCCD','success'); }
+      // Calculate straight-line distance using Haversine
+      const R = 6371;
+      const dLat = (userLat - base.lat) * Math.PI / 180;
+      const dLng = (userLng - base.lng) * Math.PI / 180;
+      const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(base.lat*Math.PI/180)*Math.cos(userLat*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      const distKm = (R * c * 1.3).toFixed(1); // 1.3 factor for road vs straight line
+      document.getElementById('distance-km').value = distKm;
+      showToast('Distance: ' + distKm + ' km \uD83D\uDCCD','success');
     } catch(e) { showToast('GPS distance error: ' + e.message,'error'); }
   }, () => showToast('Location access denied','error'));
 }
@@ -526,68 +550,266 @@ async function renderUserBookings() {
     '<span>\u23F1\uFE0F '+(b.estimated_hours||'-')+' hrs</span>'+
     '</div>'+
     '<div style="font-size:12px;color:#9ca3af;margin-top:6px;">'+(b.created_at ? new Date(b.created_at).toLocaleString('en-IN') : '')+'</div>'+
-    '<button class="btn-sm" onclick="showBookingMap(\''+b.machine_name+'\')" style="margin-top:10px;font-size:12px;">\uD83D\uDCE1 Track Machine</button>'+
+    '<button class="btn-sm" onclick="showBookingMap(\''+b.machine_name+'\', \''+b.id+'\')" style="margin-top:10px;font-size:12px;">\uD83D\uDCE1 Track Machine</button>'+
     '</div>'
   ).join('');
 }
 
-// ===== GPS - USER MAP =====
-async function showBookingMap(machineName) {
+// ===== GPS TRACKING — SIMULATION ENGINE =====
+
+// Haversine distance in km
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2-lat1)*Math.PI/180;
+  const dLng = (lng2-lng1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// Bearing between two points (degrees)
+function bearing(lat1, lng1, lat2, lng2) {
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const y = Math.sin(dLng) * Math.cos(lat2 * Math.PI / 180);
+  const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+             Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLng);
+  return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+}
+
+// Direction label from bearing
+function directionLabel(deg) {
+  const dirs = ['N','NE','E','SE','S','SW','W','NW','N'];
+  return dirs[Math.round(deg / 45)];
+}
+
+// Fetch road route from OSRM (free, no API key needed)
+async function fetchOSRMRoute(fromLat, fromLng, toLat, toLng) {
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${fromLng},${fromLat};${toLng},${toLat}?overview=full&geometries=geojson&steps=false`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+      const coords = data.routes[0].geometry.coordinates.map(c => ({ lat: c[1], lng: c[0] }));
+      const distanceKm = (data.routes[0].distance / 1000).toFixed(1);
+      const durationMin = Math.round(data.routes[0].duration / 60);
+      return { coords, distanceKm, durationMin };
+    }
+  } catch(e) { console.warn('OSRM failed, using straight line fallback:', e.message); }
+  return null;
+}
+
+// Interpolate waypoints densely (every ~100m)
+function interpolateRoute(coords) {
+  if (coords.length < 2) return coords;
+  const dense = [];
+  for (let i = 0; i < coords.length - 1; i++) {
+    const p1 = coords[i], p2 = coords[i+1];
+    const segKm = haversineKm(p1.lat, p1.lng, p2.lat, p2.lng);
+    const steps = Math.max(1, Math.round(segKm * 10)); // 10 points per km
+    for (let s = 0; s <= steps; s++) {
+      dense.push({
+        lat: p1.lat + (p2.lat - p1.lat) * s / steps,
+        lng: p1.lng + (p2.lng - p1.lng) * s / steps
+      });
+    }
+  }
+  return dense;
+}
+
+function stopTracking() {
+  if (trackingTimer) { clearInterval(trackingTimer); trackingTimer = null; }
+  trackingRoute = []; trackingIndex = 0;
+}
+
+async function showBookingMap(machineName, bookingId) {
+  stopTracking();
+
+  // Build modal
   let modal = document.getElementById('gps-modal');
   if (!modal) {
     modal = document.createElement('div');
     modal.id = 'gps-modal';
-    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
-    modal.innerHTML =
-      '<div style="background:#fff;border-radius:12px;padding:1.5rem;width:90%;max-width:600px;max-height:90vh;overflow-y:auto;">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">'+
-      '<h3 style="margin:0">\uD83D\uDCE1 Live Tracking: <span id="gps-modal-title"></span></h3>'+
-      '<button onclick="closeGpsModal()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;">\u2715</button>'+
-      '</div>'+
-      '<div id="gps-info-bar" style="background:#f0fdf4;border-radius:8px;padding:0.75rem;margin-bottom:1rem;font-size:0.9rem;"></div>'+
-      '<div id="gps-user-map" style="height:300px;border-radius:8px;"></div>'+
-      '<div id="trip-history" style="margin-top:1rem;"></div>'+
-      '</div>';
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;';
     document.body.appendChild(modal);
   }
+  modal.innerHTML =
+    '<div style="background:#fff;border-radius:16px;padding:1.5rem;width:92%;max-width:640px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">'+
+    '<h3 style="margin:0;font-size:1.1rem;">\uD83D\uDE9C Live Tracking: <span id="gps-modal-title" style="color:#16a34a;"></span></h3>'+
+    '<button onclick="closeGpsModal()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:#6b7280;">\u2715</button>'+
+    '</div>'+
+    '<div id="gps-info-bar" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:0.75rem 1rem;margin-bottom:1rem;font-size:0.88rem;line-height:1.6;"></div>'+
+    '<div id="gps-user-map" style="height:320px;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb;"></div>'+
+    '<div id="trip-stats" style="margin-top:1rem;display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;"></div>'+
+    '<div id="trip-history" style="margin-top:1rem;"></div>'+
+    '</div>';
   modal.style.display = 'flex';
   document.getElementById('gps-modal-title').textContent = machineName;
-  if (userLocationMap) { userLocationMap.remove(); userLocationMap = null; }
-  userLocationMap = L.map('gps-user-map').setView([13.135,78.132],12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'\u00A9 OpenStreetMap contributors'}).addTo(userLocationMap);
-  await refreshUserTrackingMap(machineName);
-}
-async function refreshUserTrackingMap(machineName) {
+
+  // Destroy old map
+  if (trackingMap) { trackingMap.remove(); trackingMap = null; }
+  if (typeof L === 'undefined') {
+    document.getElementById('gps-info-bar').innerHTML = '\u26A0\uFE0F Leaflet map not loaded. Please refresh.';
+    return;
+  }
+
+  // Machine base location
+  const base = MACHINE_BASE_LOCATIONS[machineName] || { lat:13.135, lng:78.132, label:'Kolar Base' };
+  const infoBar = document.getElementById('gps-info-bar');
+  infoBar.innerHTML = '\u23F3 Fetching route from <b>' + base.label + '</b> to your location...';
+
+  // Get user location
+  let userLat = 13.0827, userLng = 80.2707; // default: Chennai
   try {
-    const res = await fetch(`${API_BASE}/location/${encodeURIComponent(machineName)}?limit=50`).then(r => r.json());
-    const infoBar = document.getElementById('gps-info-bar');
-    if (!res.isOk||!res.data.length) {
-      if (infoBar) infoBar.innerHTML = '\u26A0\uFE0F No GPS data. Showing base location (Kolar).';
-      L.marker([13.135,78.132]).addTo(userLocationMap).bindPopup(machineName+' \u2014 No signal').openPopup();
+    userLat = await new Promise((res, rej) => {
+      navigator.geolocation.getCurrentPosition(p => res(p.coords.latitude), rej, { timeout: 5000 });
+    });
+    userLng = await new Promise((res, rej) => {
+      navigator.geolocation.getCurrentPosition(p => res(p.coords.longitude), rej, { timeout: 5000 });
+    });
+  } catch(e) {
+    // Use a simulated destination near Bengaluru for demo
+    userLat = 12.9716;
+    userLng = 77.5946;
+    infoBar.innerHTML += '<br><small style="color:#d97706;">\u26A0\uFE0F Location access denied — using Bengaluru as demo destination.</small>';
+  }
+
+  // Init map centered between base and user
+  const midLat = (base.lat + userLat) / 2;
+  const midLng = (base.lng + userLng) / 2;
+  trackingMap = L.map('gps-user-map').setView([midLat, midLng], 10);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '\u00A9 OpenStreetMap contributors', maxZoom: 18
+  }).addTo(trackingMap);
+
+  // Fetch real road route via OSRM
+  infoBar.innerHTML = '\uD83D\uDDFA\uFE0F Fetching road route via OSRM...';
+  const routeData = await fetchOSRMRoute(base.lat, base.lng, userLat, userLng);
+
+  let routeCoords;
+  let totalDistKm, totalDurMin;
+  if (routeData) {
+    routeCoords = routeData.coords;
+    totalDistKm = routeData.distanceKm;
+    totalDurMin = routeData.durationMin;
+  } else {
+    // Fallback: straight line with curve
+    routeCoords = interpolateRoute([{ lat:base.lat, lng:base.lng }, { lat:userLat, lng:userLng }]);
+    totalDistKm = haversineKm(base.lat, base.lng, userLat, userLng).toFixed(1);
+    totalDurMin = Math.round(totalDistKm * 2.5);
+  }
+
+  // Densify route for smooth animation
+  const denseRoute = interpolateRoute(routeCoords);
+  trackingRoute = denseRoute;
+  trackingIndex = 0;
+
+  // Draw full planned route (grey)
+  const plannedLatLngs = denseRoute.map(p => [p.lat, p.lng]);
+  L.polyline(plannedLatLngs, { color:'#d1d5db', weight:4, opacity:0.6, dashArray:'8,6' }).addTo(trackingMap);
+
+  // Travelled path polyline (green, grows over time)
+  travelledPolyline = L.polyline([], { color:'#16a34a', weight:5, opacity:0.85 }).addTo(trackingMap);
+
+  // Source marker (machine base)
+  const baseIcon = L.divIcon({
+    html: '<div style="background:#1a3a1a;color:#fff;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.4);">\uD83C\uDFE0 '+base.label+'</div>',
+    iconSize:[140,26], iconAnchor:[70,13], className:''
+  });
+  L.marker([base.lat, base.lng], { icon: baseIcon }).addTo(trackingMap);
+
+  // Destination marker (user)
+  const destIcon = L.divIcon({
+    html: '<div style="background:#2563eb;color:#fff;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.4);">\uD83C\uDFE0 Your Location</div>',
+    iconSize:[120,26], iconAnchor:[60,13], className:''
+  });
+  L.marker([userLat, userLng], { icon: destIcon }).addTo(trackingMap);
+
+  // Machine marker (animated)
+  const machineIcon = L.divIcon({
+    html: '<div style="font-size:2rem;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.4));">\uD83D\uDE9C</div>',
+    iconSize:[36,36], iconAnchor:[18,18], className:''
+  });
+  trackingMarker = L.marker([base.lat, base.lng], { icon: machineIcon, zIndexOffset: 1000 }).addTo(trackingMap);
+
+  // Fit map to route
+  const bounds = L.latLngBounds(plannedLatLngs);
+  trackingMap.fitBounds(bounds, { padding:[30,30] });
+
+  // Stats cards
+  const statsEl = document.getElementById('trip-stats');
+  if (statsEl) {
+    statsEl.innerHTML =
+      '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:0.75rem;text-align:center;"><div style="font-size:1.4rem;font-weight:800;color:#16a34a;" id="stat-dist">'+totalDistKm+' km</div><div style="font-size:0.75rem;color:#6b7280;margin-top:2px;">Total Distance</div></div>'+
+      '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:0.75rem;text-align:center;"><div style="font-size:1.4rem;font-weight:800;color:#2563eb;" id="stat-eta">'+totalDurMin+' min</div><div style="font-size:0.75rem;color:#6b7280;margin-top:2px;">Est. Arrival</div></div>'+
+      '<div style="background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:0.75rem;text-align:center;"><div style="font-size:1.4rem;font-weight:800;color:#d97706;" id="stat-speed">0 km/h</div><div style="font-size:0.75rem;color:#6b7280;margin-top:2px;">Live Speed</div></div>';
+  }
+
+  infoBar.innerHTML = '\uD83D\uDFE2 <b>Live Simulation Active</b> &mdash; '+machineName+' is en route from <b>'+base.label+'</b><br>Total route: <b>'+totalDistKm+' km</b> &nbsp;|&nbsp; Est. time: <b>'+totalDurMin+' min</b>';
+
+  // Simulate movement
+  const totalPoints = denseRoute.length;
+  // Simulate at ~40 km/h average. Step interval in ms.
+  const avgSpeedKmh = 38 + Math.random() * 10; // 38-48 km/h
+  const stepDistKm = parseFloat(totalDistKm) / totalPoints;
+  const stepTimeMs = Math.max(200, (stepDistKm / avgSpeedKmh) * 3600 * 1000 * 0.02); // 50x speed up
+  const travelledPath = [];
+
+  trackingTimer = setInterval(() => {
+    if (trackingIndex >= totalPoints - 1) {
+      clearInterval(trackingTimer);
+      infoBar.innerHTML = '\uD83C\uDF89 <b>'+machineName+' has arrived!</b> Delivery complete.';
+      const speedEl = document.getElementById('stat-speed'); if (speedEl) speedEl.textContent = '0 km/h';
+      const etaEl = document.getElementById('stat-eta'); if (etaEl) etaEl.textContent = 'Arrived!';
       return;
     }
-    const latest = res.data[0];
-    const lat = parseFloat(latest.lat), lng = parseFloat(latest.lng);
-    if (infoBar) infoBar.innerHTML = '<b>\uD83D\uDCCD Last known:</b> '+lat.toFixed(5)+', '+lng.toFixed(5)+'<br><b>\uD83D\uDE80 Speed:</b> '+(latest.speed||0)+' km/h &nbsp;&nbsp;<b>\uD83D\uDCF6 Signal:</b> '+(latest.signal_strength||'--')+'%&nbsp;&nbsp;<b>\uD83D\uDD50 Updated:</b> '+latest.created_at;
-    const liveIcon = L.divIcon({html:'<div style="font-size:1.8rem">\uD83D\uDE9C</div>',iconSize:[32,32],className:''});
-    L.marker([lat,lng],{icon:liveIcon}).addTo(userLocationMap).bindPopup(machineName+'<br>Speed: '+(latest.speed||0)+' km/h').openPopup();
-    userLocationMap.setView([lat,lng],14);
-    if (res.data.length>1) { const path=res.data.map(p=>[parseFloat(p.lat),parseFloat(p.lng)]).reverse(); L.polyline(path,{color:'#16a34a',weight:3,opacity:0.7}).addTo(userLocationMap); }
+    trackingIndex++;
+    const curr = denseRoute[trackingIndex];
+    const prev = denseRoute[trackingIndex - 1];
+    travelledPath.push([curr.lat, curr.lng]);
+    trackingMarker.setLatLng([curr.lat, curr.lng]);
+    travelledPolyline.setLatLngs(travelledPath);
+
+    // Compute live speed (varies realistically)
+    const noise = 0.85 + Math.random() * 0.3;
+    const liveSpeed = Math.round(avgSpeedKmh * noise);
+    const dir = directionLabel(bearing(prev.lat, prev.lng, curr.lat, curr.lng));
+    const remainingPoints = totalPoints - trackingIndex;
+    const remainingKm = (remainingPoints * stepDistKm).toFixed(1);
+    const remainingMin = Math.round((remainingPoints * stepTimeMs) / 60000 * 50); // undo 50x
+
+    // Update stats
+    const speedEl = document.getElementById('stat-speed'); if (speedEl) speedEl.textContent = liveSpeed+' km/h';
+    const etaEl = document.getElementById('stat-eta'); if (etaEl) etaEl.textContent = remainingMin+' min';
+    const distEl = document.getElementById('stat-dist'); if (distEl) distEl.textContent = remainingKm+' km left';
+
+    // Update info bar
+    infoBar.innerHTML = '\uD83D\uDFE2 <b>Live</b> &mdash; Speed: <b>'+liveSpeed+' km/h</b> &nbsp;|&nbsp; Direction: <b>'+dir+'</b> &nbsp;|&nbsp; Remaining: <b>'+remainingKm+' km</b> / <b>'+remainingMin+' min</b>';
+
+    // Pan map to follow machine
+    trackingMap.panTo([curr.lat, curr.lng], { animate: true, duration: 0.3 });
+
+    // Trip log
     const hist = document.getElementById('trip-history');
-    if (hist) hist.innerHTML = '<h4 style="margin:0 0 0.5rem">\uD83D\uDDFA\uFE0F Recent Pings (last '+res.data.length+')</h4>'+res.data.slice(0,10).map(p=>'<div style="font-size:0.8rem;padding:0.25rem 0;border-bottom:1px solid #e5e7eb">'+p.created_at+' \u2014 '+parseFloat(p.lat).toFixed(5)+', '+parseFloat(p.lng).toFixed(5)+' \u2014 '+(p.speed||0)+' km/h</div>').join('');
-  } catch(e) { console.error('GPS fetch error', e); }
+    if (hist && trackingIndex % 20 === 0) {
+      const entry = '<div style="font-size:0.78rem;padding:0.2rem 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">'+new Date().toLocaleTimeString('en-IN')+' &mdash; '+curr.lat.toFixed(5)+', '+curr.lng.toFixed(5)+' &mdash; '+liveSpeed+' km/h '+dir+'</div>';
+      hist.innerHTML = '<h4 style="margin:0 0 0.4rem;font-size:0.85rem;">\uD83D\uDDFA\uFE0F Trip Log</h4>' + entry + (hist.innerHTML.replace(/<h4[^>]*>[^<]*<\/h4>/,'') || '');
+    }
+  }, stepTimeMs);
 }
+
 function closeGpsModal() {
   const m = document.getElementById('gps-modal'); if (m) m.style.display = 'none';
-  if (userLocationMap) { userLocationMap.remove(); userLocationMap = null; }
+  stopTracking();
+  if (trackingMap) { trackingMap.remove(); trackingMap = null; }
 }
 
 // ===== GPS - ADMIN FLEET MAP =====
 async function initFleetMap() {
   const container = document.getElementById('fleet-map'); if (!container) return;
   if (fleetMap) { fleetMap.remove(); fleetMap = null; fleetMarkers = {}; }
-  fleetMap = L.map('fleet-map').setView([13.135,78.132],12);
+  fleetMap = L.map('fleet-map').setView([13.135,78.132],13);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'\u00A9 OpenStreetMap contributors'}).addTo(fleetMap);
+  // Base marker
   L.marker([13.135,78.132],{
     icon: L.divIcon({
       html: '<div style="background:#1a3a1a;color:#fff;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.3);">\uD83C\uDFE0 AgroBook Base</div>',
@@ -601,51 +823,42 @@ async function initFleetMap() {
 
 async function refreshFleetMap() {
   if (!fleetMap) return;
-  try {
-    const res = await fetch(`${API_BASE}/location/latest`).then(r => r.json());
-    const statusColors = {'Available':'#16a34a','Busy':'#dc2626','Maintenance':'#d97706'};
-    const statusDot    = {'Available':'\uD83D\uDFE2','Busy':'\uD83D\uDD34','Maintenance':'\uD83D\uDFE1'};
-    const machineEmoji = {'Grass Cutter':'\uD83C\uDF3F','Harvester':'\uD83C\uDF3E','Flip plow':'\uD83D\uDD04','Corn Planter':'\uD83C\uDF3D'};
-    const defaultCoords = {
-      'Grass Cutter':[13.1370,78.1335],'Harvester':[13.1390,78.1355],
-      'Flip plow':[13.1330,78.1360],'Corn Planter':[13.1310,78.1310]
-    };
-    const apiMachines = {};
-    if (res.isOk && res.data && res.data.length) res.data.forEach(loc => { apiMachines[loc.machine_name] = loc; });
-    const machinesToShow = Object.keys(machineConfigs).length ? Object.keys(machineConfigs) : Object.keys(defaultCoords);
-    machinesToShow.forEach(machineName => {
-      const loc    = apiMachines[machineName];
-      const coords = defaultCoords[machineName] || [13.135,78.132];
-      const lat    = loc ? parseFloat(loc.lat) : coords[0];
-      const lng    = loc ? parseFloat(loc.lng) : coords[1];
-      const avail  = (machineConfigs[machineName]||{}).availability || 'Available';
-      const color  = statusColors[avail]  || '#6b7280';
-      const dot    = statusDot[avail]     || '\uD83D\uDFE2';
-      const emoji  = machineEmoji[machineName] || '\uD83D\uDE9C';
-      const iconHtml =
-        '<div style="display:flex;flex-direction:column;align-items:center;">'+
-        '<div style="background:#fff;border:2px solid '+color+';border-radius:20px;padding:4px 10px;box-shadow:0 2px 8px rgba(0,0,0,0.15);display:flex;align-items:center;gap:5px;white-space:nowrap;">'+
-        '<span style="font-size:14px;">'+emoji+'</span>'+
-        '<span style="font-size:11px;font-weight:700;color:#1a3a1a;font-family:sans-serif;">'+machineName+'</span>'+
-        '<span style="font-size:11px;">'+dot+'</span>'+
-        '</div>'+
-        '<div style="width:2px;height:6px;background:'+color+';"></div>'+
-        '<div style="width:7px;height:7px;border-radius:50%;background:'+color+';border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.25);"></div>'+
-        '</div>';
-      const icon  = L.divIcon({html:iconHtml,iconSize:[150,54],iconAnchor:[75,54],className:''});
-      const popup =
-        '<b>'+emoji+' '+machineName+'</b><br>'+
-        '<span style="color:'+color+';font-weight:600;">'+dot+' '+avail+'</span>'+
-        (loc ? '<br>Speed: '+(loc.speed||0)+' km/h<br>Signal: '+(loc.signal_strength||'--')+'%<br><small>'+loc.created_at+'</small>' : '<br><small>No live GPS \u2014 base location</small>');
-      if (fleetMarkers[machineName]) {
-        fleetMarkers[machineName].setLatLng([lat,lng]);
-        fleetMarkers[machineName].setIcon(icon);
-        fleetMarkers[machineName].setPopupContent(popup);
-      } else {
-        fleetMarkers[machineName] = L.marker([lat,lng],{icon}).addTo(fleetMap).bindPopup(popup);
-      }
-    });
-  } catch(e) { console.error('Fleet map refresh error', e); }
+  const statusColors = {'Available':'#16a34a','Busy':'#dc2626','Maintenance':'#d97706'};
+  const statusDot    = {'Available':'\uD83D\uDFE2','Busy':'\uD83D\uDD34','Maintenance':'\uD83D\uDFE1'};
+  const machineEmoji = {'Grass Cutter':'\uD83C\uDF3F','Harvester':'\uD83C\uDF3E','Flip plow':'\uD83D\uDD04','Corn Planter':'\uD83C\uDF3D'};
+
+  const machinesToShow = Object.keys(MACHINE_BASE_LOCATIONS);
+  machinesToShow.forEach(machineName => {
+    const base  = MACHINE_BASE_LOCATIONS[machineName];
+    const lat   = base.lat, lng = base.lng;
+    const avail = (machineConfigs[machineName]||{}).availability || 'Available';
+    const color = statusColors[avail]  || '#6b7280';
+    const dot   = statusDot[avail]     || '\uD83D\uDFE2';
+    const emoji = machineEmoji[machineName] || '\uD83D\uDE9C';
+    const iconHtml =
+      '<div style="display:flex;flex-direction:column;align-items:center;">'+
+      '<div style="background:#fff;border:2px solid '+color+';border-radius:20px;padding:4px 10px;box-shadow:0 2px 8px rgba(0,0,0,0.15);display:flex;align-items:center;gap:5px;white-space:nowrap;">'+
+      '<span style="font-size:14px;">'+emoji+'</span>'+
+      '<span style="font-size:11px;font-weight:700;color:#1a3a1a;font-family:sans-serif;">'+machineName+'</span>'+
+      '<span style="font-size:11px;">'+dot+'</span>'+
+      '</div>'+
+      '<div style="width:2px;height:6px;background:'+color+';"></div>'+
+      '<div style="width:7px;height:7px;border-radius:50%;background:'+color+';border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.25);"></div>'+
+      '</div>';
+    const icon  = L.divIcon({html:iconHtml,iconSize:[150,54],iconAnchor:[75,54],className:''});
+    const popup =
+      '<b>'+emoji+' '+machineName+'</b><br>'+
+      '<span style="color:'+color+';font-weight:600;">'+dot+' '+avail+'</span><br>'+
+      '\uD83D\uDCCD '+base.label+'<br>'+
+      '<small>GPS: '+lat.toFixed(4)+', '+lng.toFixed(4)+'</small>';
+    if (fleetMarkers[machineName]) {
+      fleetMarkers[machineName].setLatLng([lat,lng]);
+      fleetMarkers[machineName].setIcon(icon);
+      fleetMarkers[machineName].setPopupContent(popup);
+    } else {
+      fleetMarkers[machineName] = L.marker([lat,lng],{icon}).addTo(fleetMap).bindPopup(popup);
+    }
+  });
 }
 
 function startGpsRefresh() { stopGpsRefresh(); gpsRefreshTimer = setInterval(async()=>{ await refreshFleetMap(); await loadGeofenceAlerts(); },30000); }
@@ -667,7 +880,7 @@ async function loadGeofenceAlerts() {
       '<div style="font-size:0.75rem;color:#9ca3af">'+a.created_at+'</div>'+
       '</div>'
     ).join('');
-  } catch(e) { console.error('Geofence alerts error', e); }
+  } catch(e) { container.innerHTML='<div style="color:#6b7280;font-size:0.9rem">\u2705 No active alerts</div>'; }
 }
 async function resolveAlert(alertId, btn) {
   btn.disabled = true; btn.textContent = 'Resolving...';
@@ -718,7 +931,6 @@ async function saveMachineConfig(e) {
     if (errEl) { errEl.textContent='Please fill all fields with valid numbers.'; errEl.style.display='block'; }
     btn.disabled=false; btn.textContent='Save Configuration'; return;
   }
-  // Find the existing DB record (must have .id for PUT to work)
   const existingRecord = allData.find(r => r.type==='machine_config' && r.machine_name===machineName);
   const configRecord   = { type:'machine_config', machine_name:machineName, rate_per_acre:rate, cost_per_km:cpkm, petrol_cost_per_km:petrol, driver_cost:driver, availability:avail, updated_at:new Date().toISOString() };
   let res;
@@ -730,12 +942,11 @@ async function saveMachineConfig(e) {
   btn.disabled=false; btn.textContent='Save Configuration';
   if (res.isOk) {
     showToast(machineName + ' configuration saved! \u2705','success');
-    // Update in-memory immediately so the badge reflects correctly right away
     machineConfigs[machineName] = { rate_per_acre:rate, cost_per_km:cpkm, petrol_cost_per_km:petrol, driver_cost:driver, availability:avail };
     const idx = allData.findIndex(r => r.type==='machine_config' && r.machine_name===machineName);
     if (idx > -1) { allData[idx] = { ...allData[idx], ...configRecord }; } else { allData.unshift(configRecord); }
-    onAdminMachineChange();          // refresh badge + form from the correct in-memory value
-    fetchAllFromApi();               // background re-sync (no await — won't race the badge)
+    onAdminMachineChange();
+    fetchAllFromApi();
     if (typeof refreshFleetMap === 'function') refreshFleetMap();
   } else {
     if (errEl) { errEl.textContent='Save failed: '+(res.error||'Unknown error'); errEl.style.display='block'; }
@@ -746,7 +957,7 @@ async function renderAdminMachine() {
   onAdminMachineChange();
 }
 
-// ===== ADMIN: RENDER USERS — reads live from DB =====
+// ===== ADMIN: RENDER USERS =====
 async function renderAdminUsers() {
   const listEl = document.getElementById('admin-users-list');
   if (!listEl) return;
@@ -773,7 +984,7 @@ async function renderAdminUsers() {
   ).join('');
 }
 
-// ===== ADMIN: RENDER BOOKINGS — reads live from DB =====
+// ===== ADMIN: RENDER BOOKINGS =====
 async function renderAdminBookings() {
   const listEl = document.getElementById('admin-bookings-list');
   if (!listEl) return;
@@ -834,11 +1045,83 @@ function switchAdminTab(tab) {
   if (tab==='tracker')  setTimeout(initFleetMap, 200);
 }
 
+// ===== USER PROFILE =====
+function showUserProfile() {
+  if (!currentUser) return;
+  let modal = document.getElementById('profile-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'profile-modal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML =
+    '<div style="background:#fff;border-radius:16px;padding:1.75rem;width:90%;max-width:460px;box-shadow:0 20px 60px rgba(0,0,0,0.25);">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;">'+
+    '<h3 style="margin:0;font-size:1.1rem;">\uD83D\uDC64 My Profile</h3>'+
+    '<button onclick="document.getElementById(\'profile-modal\').style.display=\'none\'" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:#6b7280;">\u2715</button>'+
+    '</div>'+
+    '<div id="profile-save-msg" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:0.6rem 1rem;margin-bottom:1rem;font-size:0.88rem;color:#16a34a;"></div>'+
+    '<form id="profile-form" onsubmit="saveUserProfile(event)">'+
+    '<div style="margin-bottom:1rem;">'+
+    '<label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:4px;color:#374151;">Full Name</label>'+
+    '<input id="prof-name" class="form-input" value="'+(currentUser.user_name||'')+'">'+
+    '</div>'+
+    '<div style="margin-bottom:1rem;">'+
+    '<label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:4px;color:#374151;">Email</label>'+
+    '<input id="prof-email" class="form-input" value="'+(currentUser.user_email||'')+' " readonly style="background:#f9fafb;cursor:not-allowed;">'+
+    '</div>'+
+    '<div style="margin-bottom:1rem;">'+
+    '<label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:4px;color:#374151;">Phone</label>'+
+    '<input id="prof-phone" class="form-input" value="'+(currentUser.user_phone||'')+'">'+
+    '</div>'+
+    '<div style="margin-bottom:1rem;">'+
+    '<label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:4px;color:#374151;">Address / Village</label>'+
+    '<input id="prof-address" class="form-input" placeholder="Your village or address" value="'+(currentUser.address||'')+'">'+
+    '</div>'+
+    '<div style="margin-bottom:1.25rem;">'+
+    '<label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:4px;color:#374151;">New Password <span style="font-weight:400;color:#9ca3af;">(leave blank to keep current)</span></label>'+
+    '<input id="prof-pass" class="form-input" type="password" placeholder="New password">'+
+    '</div>'+
+    '<button type="submit" id="prof-save-btn" class="btn-primary" style="width:100%;">\u2705 Save Changes</button>'+
+    '</form>'+
+    '</div>';
+  modal.style.display = 'flex';
+}
+
+async function saveUserProfile(e) {
+  e.preventDefault();
+  const btn = document.getElementById('prof-save-btn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  const name    = document.getElementById('prof-name').value.trim();
+  const phone   = document.getElementById('prof-phone').value.trim();
+  const address = document.getElementById('prof-address').value.trim();
+  const newPass = document.getElementById('prof-pass').value;
+  if (!name || !phone) { showToast('Name and phone are required','error'); btn.disabled=false; btn.textContent='\u2705 Save Changes'; return; }
+  if (!isValidPhone(phone)) { showToast('Invalid phone number','error'); btn.disabled=false; btn.textContent='\u2705 Save Changes'; return; }
+  if (newPass && !isStrongPassword(newPass)) { showToast('Weak password — 8+ chars, upper, lower, number, special','error'); btn.disabled=false; btn.textContent='\u2705 Save Changes'; return; }
+  const updated = { ...currentUser, user_name:name, user_phone:phone, address:address };
+  if (newPass) updated.user_password = newPass;
+  const res = await window.dataSdk.update(updated);
+  btn.disabled=false; btn.textContent='\u2705 Save Changes';
+  if (res.isOk) {
+    currentUser = updated;
+    saveSession();
+    const nameEl = document.getElementById('dash-username');
+    if (nameEl) nameEl.textContent = '\uD83D\uDC64 ' + currentUser.user_name;
+    const msgEl = document.getElementById('profile-save-msg');
+    if (msgEl) { msgEl.textContent = '\u2705 Profile updated successfully!'; msgEl.style.display='block'; setTimeout(()=>msgEl.style.display='none',3000); }
+    showToast('Profile updated!','success');
+  } else {
+    showToast('Update failed: '+(res.error||'Unknown error'),'error');
+  }
+}
+
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', async () => {
-  await window.dataSdk.init(null);   // boots by calling fetchAllFromApi
+  await window.dataSdk.init(null);
   const restored = await restoreSession();
   if (!restored) showPage('home');
   if (typeof lucide !== 'undefined') lucide.createIcons();
-  window.switchAdminTab = switchAdminTab;  // override any inline HTML version
+  window.switchAdminTab = switchAdminTab;
 });
