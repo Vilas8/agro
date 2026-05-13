@@ -534,23 +534,27 @@ async function renderUserBookings() {
     container.innerHTML = '<div style="text-align:center;padding:56px 16px;color:#9ca3af"><div style="font-size:3rem;margin-bottom:14px">📋</div><p style="font-size:15px">No bookings yet. Search and book a machine above!</p></div>';
     return;
   }
-  container.innerHTML = userBookings.map(b =>
-    '<div class="booking-card">'+
-    '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'+
-    '<span style="font-family:\'Syne\',sans-serif;font-weight:700;font-size:16px;">'+(b.machine_name||'Machine')+'</span>'+
-    '<span class="badge status-'+((b.status||'pending').toLowerCase())+'">'+(b.status||'Pending')+'</span>'+
-    '</div>'+
-    '<div class="booking-meta" style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;">'+
-    '<span>🌾 '+(b.crop_type||'-')+'</span>'+
-    '<span>📐 '+(b.acres||'-')+' acres</span>'+
-    '<span>📍 '+(b.distance||'-')+' km</span>'+
-    '<span>💰 ₹'+((b.total_cost||0).toLocaleString('en-IN'))+'</span>'+
-    '<span>⏱️ '+(b.estimated_hours||'-')+' hrs</span>'+
-    '</div>'+
-    '<div style="font-size:12px;color:#9ca3af;margin-top:6px;">'+(b.created_at ? new Date(b.created_at).toLocaleString('en-IN') : '')+'</div>'+
-    '<button class="btn-sm" onclick="showBookingMap(\''+b.machine_name+'\', \''+b.id+'\')" style="margin-top:10px;font-size:12px;">📡 Track Machine</button>'+
-    '</div>'
-  ).join('');
+  container.innerHTML = userBookings.map(b => {
+    const isConfirmed = (b.status || '').toLowerCase() === 'confirmed';
+    const trackBtn = isConfirmed
+      ? '<button class="btn-sm" onclick="showBookingMap(\''+b.machine_name+'\', \''+b.id+'\')" style="margin-top:10px;font-size:12px;">📡 Track Machine</button>'
+      : '';
+    return '<div class="booking-card">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'+
+      '<span style="font-family:\'Syne\',sans-serif;font-weight:700;font-size:16px;">'+(b.machine_name||'Machine')+'</span>'+
+      '<span class="badge status-'+((b.status||'pending').toLowerCase())+'">'+(b.status||'Pending')+'</span>'+
+      '</div>'+
+      '<div class="booking-meta" style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;">'+
+      '<span>🌾 '+(b.crop_type||'-')+'</span>'+
+      '<span>📐 '+(b.acres||'-')+' acres</span>'+
+      '<span>📍 '+(b.distance||'-')+' km</span>'+
+      '<span>💰 ₹'+((b.total_cost||0).toLocaleString('en-IN'))+'</span>'+
+      '<span>⏱️ '+(b.estimated_hours||'-')+' hrs</span>'+
+      '</div>'+
+      '<div style="font-size:12px;color:#9ca3af;margin-top:6px;">'+(b.created_at ? new Date(b.created_at).toLocaleString('en-IN') : '')+'</div>'+
+      trackBtn+
+      '</div>';
+  }).join('');
 }
 
 // ===== GPS TRACKING — SIMULATION ENGINE =====
