@@ -549,7 +549,7 @@
     <div class="nav-inner">
       <div class="nav-logo" style="cursor:default;">
         <div class="nav-logo-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+          <svg width="22" height="22" viewBox="0 0 24 0 24" fill="none" stroke="white" stroke-width="2.5">
             <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
             <polyline points="9 22 9 12 15 12 15 22"/>
           </svg>
@@ -563,7 +563,6 @@
     </div>
   </nav>
   <main class="dashboard-panel">
-    <!-- Admin Tabs -->
     <div style="display:flex;gap:8px;margin-bottom:28px;flex-wrap:wrap;">
       <button class="tab-btn active" id="adm-tab-machine"  onclick="switchAdminTab('machine')">🚜 Machines</button>
       <button class="tab-btn"        id="adm-tab-users"    onclick="switchAdminTab('users')">👤 Users</button>
@@ -571,7 +570,6 @@
       <button class="tab-btn"        id="adm-tab-tracker"  onclick="switchAdminTab('tracker')">📡 Live Tracker</button>
     </div>
 
-    <!-- Machines Tab -->
     <div id="adm-machine">
       <div class="two-col-grid">
         <div class="glass-card" style="padding:36px 32px;">
@@ -620,7 +618,6 @@
             <button type="submit" id="machine-save-btn" class="btn-primary" style="width:100%;margin-top:18px;font-size:15px;padding:13px;">Save Configuration</button>
           </form>
         </div>
-        <!-- Current Rates -->
         <div>
           <h3 style="font-family:'Syne',sans-serif;font-weight:700;font-size:17px;color:var(--green-deep);margin-bottom:18px;">Current Machine Rates</h3>
           <div style="display:flex;flex-direction:column;gap:14px;">
@@ -646,7 +643,6 @@
       <div id="admin-machine-container" style="display:none;"></div>
     </div>
 
-    <!-- Users Tab -->
     <div id="adm-users" style="display:none;">
       <div class="glass-card" style="padding:36px 32px;">
         <h2 style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;margin-bottom:22px;">Registered Users</h2>
@@ -660,7 +656,6 @@
       </div>
     </div>
 
-    <!-- Bookings Tab -->
     <div id="adm-bookings" style="display:none;">
       <div class="glass-card" style="padding:36px 32px;">
         <h2 style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;margin-bottom:22px;">All Bookings</h2>
@@ -674,7 +669,6 @@
       </div>
     </div>
 
-    <!-- Live Tracker Tab -->
     <div id="adm-tracker" style="display:none;">
       <div class="glass-card" style="padding:36px 32px;">
         <h2 style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;margin-bottom:6px;">📡 Live Fleet Map</h2>
@@ -698,9 +692,6 @@
   </footer>
 </div>
 
-<!-- ============================================================
-     INLINE PATCHES: tab switcher + session persistence
-============================================================ -->
 <script>
 function switchAdminTab(tab) {
   ['machine','users','bookings','tracker'].forEach(t => {
