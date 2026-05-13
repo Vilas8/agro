@@ -26,6 +26,36 @@ let trackingTimer = null;
 let trackingPolyline = null;
 let travelledPolyline = null;
 
+// ===== TRACKING PERSISTENCE =====
+// Key: "tracking_<bookingId>"
+// Value: { index, totalPoints, startedAt, machineName, route: [{lat,lng},...], distKm, durMin }
+function saveTrackingState(bookingId, index, totalPoints, machineName, route, distKm, durMin) {
+  try {
+    sessionStorage.setItem('tracking_' + bookingId, JSON.stringify({
+      index, totalPoints, machineName,
+      route,           // full dense route array
+      distKm, durMin,
+      savedAt: Date.now()
+    }));
+  } catch(e) {}
+}
+function loadTrackingState(bookingId) {
+  try {
+    const raw = sessionStorage.getItem('tracking_' + bookingId);
+    if (!raw) return null;
+    const state = JSON.parse(raw);
+    // Expire after 4 hours (machine won't still be en-route)
+    if (Date.now() - state.savedAt > 4 * 3600 * 1000) {
+      sessionStorage.removeItem('tracking_' + bookingId);
+      return null;
+    }
+    return state;
+  } catch(e) { return null; }
+}
+function clearTrackingState(bookingId) {
+  try { sessionStorage.removeItem('tracking_' + bookingId); } catch(e) {}
+}
+
 // ===== BASE MACHINE LOCATIONS (near Kolar) =====
 const MACHINE_BASE_LOCATIONS = {
   'Grass Cutter':  { lat: 13.1370, lng: 78.1335, label: 'Kolar North Depot' },
@@ -465,16 +495,14 @@ async function autoFillDistanceFromGPS() {
     const userLat = pos.coords.latitude, userLng = pos.coords.longitude;
     const machineType = document.getElementById('machine-type').value;
     if (!machineType) { showToast('Select a machine type first','error'); return; }
-    // Use base location from MACHINE_BASE_LOCATIONS
     const base = MACHINE_BASE_LOCATIONS[machineType] || { lat:13.135, lng:78.132 };
     try {
-      // Calculate straight-line distance using Haversine
       const R = 6371;
       const dLat = (userLat - base.lat) * Math.PI / 180;
       const dLng = (userLng - base.lng) * Math.PI / 180;
       const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(base.lat*Math.PI/180)*Math.cos(userLat*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      const distKm = (R * c * 1.3).toFixed(1); // 1.3 factor for road vs straight line
+      const distKm = (R * c * 1.3).toFixed(1);
       document.getElementById('distance-km').value = distKm;
       showToast('Distance: ' + distKm + ' km \uD83D\uDCCD','success');
     } catch(e) { showToast('GPS distance error: ' + e.message,'error'); }
@@ -557,7 +585,6 @@ async function renderUserBookings() {
 
 // ===== GPS TRACKING — SIMULATION ENGINE =====
 
-// Haversine distance in km
 function haversineKm(lat1, lng1, lat2, lng2) {
   const R = 6371;
   const dLat = (lat2-lat1)*Math.PI/180;
@@ -566,7 +593,6 @@ function haversineKm(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-// Bearing between two points (degrees)
 function bearing(lat1, lng1, lat2, lng2) {
   const dLng = (lng2 - lng1) * Math.PI / 180;
   const y = Math.sin(dLng) * Math.cos(lat2 * Math.PI / 180);
@@ -575,13 +601,11 @@ function bearing(lat1, lng1, lat2, lng2) {
   return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
 }
 
-// Direction label from bearing
 function directionLabel(deg) {
   const dirs = ['N','NE','E','SE','S','SW','W','NW','N'];
   return dirs[Math.round(deg / 45)];
 }
 
-// Fetch road route from OSRM (free, no API key needed)
 async function fetchOSRMRoute(fromLat, fromLng, toLat, toLng) {
   try {
     const url = `https://router.project-osrm.org/route/v1/driving/${fromLng},${fromLat};${toLng},${toLat}?overview=full&geometries=geojson&steps=false`;
@@ -597,14 +621,13 @@ async function fetchOSRMRoute(fromLat, fromLng, toLat, toLng) {
   return null;
 }
 
-// Interpolate waypoints densely (every ~100m)
 function interpolateRoute(coords) {
   if (coords.length < 2) return coords;
   const dense = [];
   for (let i = 0; i < coords.length - 1; i++) {
     const p1 = coords[i], p2 = coords[i+1];
     const segKm = haversineKm(p1.lat, p1.lng, p2.lat, p2.lng);
-    const steps = Math.max(1, Math.round(segKm * 10)); // 10 points per km
+    const steps = Math.max(1, Math.round(segKm * 10)); // 10 points per km = ~100m steps
     for (let s = 0; s <= steps; s++) {
       dense.push({
         lat: p1.lat + (p2.lat - p1.lat) * s / steps,
@@ -613,6 +636,57 @@ function interpolateRoute(coords) {
     }
   }
   return dense;
+}
+
+// ===== REALISTIC SPEED ENGINE =====
+// Simulates real road travel:
+//   - Near origin/destination (town): ~20-30 km/h
+//   - Mid-route (highway): ~45-60 km/h
+//   - With random traffic slowdowns
+// Returns step interval in ms for a visual simulation (1 simulated min ≈ 2 real seconds)
+function getRealisticStepIntervalMs(totalPoints, totalDistKm, currentIndex) {
+  const progress = currentIndex / totalPoints; // 0.0 → 1.0
+  // Speed profile: slow at start/end, faster in the middle
+  let baseSpeedKmh;
+  if (progress < 0.1 || progress > 0.9) {
+    // Near origin or destination — local roads / village roads
+    baseSpeedKmh = 20 + Math.random() * 10; // 20-30 km/h
+  } else if (progress < 0.2 || progress > 0.8) {
+    // Transitioning to/from highway
+    baseSpeedKmh = 30 + Math.random() * 15; // 30-45 km/h
+  } else {
+    // Highway / state road
+    baseSpeedKmh = 45 + Math.random() * 15; // 45-60 km/h
+  }
+
+  // Random traffic events: 10% chance of slowdown
+  if (Math.random() < 0.10) {
+    baseSpeedKmh *= (0.4 + Math.random() * 0.3); // 40-70% of normal speed
+  }
+
+  const stepDistKm = totalDistKm / totalPoints;
+  // Real travel time for this step (in seconds)
+  const realStepSec = (stepDistKm / baseSpeedKmh) * 3600;
+  // Visual simulation: 1 real minute of travel = 2 seconds on screen
+  // So visual time = real_time * (2 / 60)
+  const visualMs = Math.round(realStepSec * (2000 / 60));
+  // Clamp between 150ms (smooth animation) and 800ms (not too slow)
+  return Math.max(150, Math.min(800, visualMs));
+}
+
+// Returns instantaneous simulated speed (km/h) for display
+function getDisplaySpeed(totalPoints, totalDistKm, currentIndex) {
+  const progress = currentIndex / totalPoints;
+  let base;
+  if (progress < 0.1 || progress > 0.9) {
+    base = 22 + Math.random() * 8;
+  } else if (progress < 0.2 || progress > 0.8) {
+    base = 32 + Math.random() * 13;
+  } else {
+    base = 46 + Math.random() * 14;
+  }
+  if (Math.random() < 0.08) base *= (0.5 + Math.random() * 0.3);
+  return Math.round(base);
 }
 
 function stopTracking() {
@@ -645,93 +719,103 @@ async function showBookingMap(machineName, bookingId) {
   modal.style.display = 'flex';
   document.getElementById('gps-modal-title').textContent = machineName;
 
-  // Destroy old map
   if (trackingMap) { trackingMap.remove(); trackingMap = null; }
   if (typeof L === 'undefined') {
     document.getElementById('gps-info-bar').innerHTML = '\u26A0\uFE0F Leaflet map not loaded. Please refresh.';
     return;
   }
 
-  // Machine base location
   const base = MACHINE_BASE_LOCATIONS[machineName] || { lat:13.135, lng:78.132, label:'Kolar Base' };
   const infoBar = document.getElementById('gps-info-bar');
-  infoBar.innerHTML = '\u23F3 Fetching route from <b>' + base.label + '</b> to your location...';
 
-  // Get user location
-  let userLat = 13.0827, userLng = 80.2707; // default: Chennai
-  try {
-    userLat = await new Promise((res, rej) => {
-      navigator.geolocation.getCurrentPosition(p => res(p.coords.latitude), rej, { timeout: 5000 });
-    });
-    userLng = await new Promise((res, rej) => {
-      navigator.geolocation.getCurrentPosition(p => res(p.coords.longitude), rej, { timeout: 5000 });
-    });
-  } catch(e) {
-    // Use a simulated destination near Bengaluru for demo
-    userLat = 12.9716;
-    userLng = 77.5946;
-    infoBar.innerHTML += '<br><small style="color:#d97706;">\u26A0\uFE0F Location access denied — using Bengaluru as demo destination.</small>';
+  // ===== CHECK FOR SAVED TRACKING STATE (resume after refresh) =====
+  const savedState = loadTrackingState(bookingId);
+  let denseRoute, totalDistKm, totalDurMin, resumeIndex;
+  let userLat, userLng;
+
+  if (savedState && savedState.route && savedState.index < savedState.totalPoints - 1) {
+    // Resume from saved state
+    denseRoute   = savedState.route;
+    totalDistKm  = savedState.distKm;
+    totalDurMin  = savedState.durMin;
+    resumeIndex  = savedState.index;
+    // Reconstruct user location from last point of route
+    userLat = denseRoute[denseRoute.length - 1].lat;
+    userLng = denseRoute[denseRoute.length - 1].lng;
+    infoBar.innerHTML = '\uD83D\uDD04 <b>Resuming tracking</b> from where you left off... (' + resumeIndex + '/' + savedState.totalPoints + ' points covered)';
+  } else {
+    // Fresh start — fetch route
+    infoBar.innerHTML = '\u23F3 Fetching route from <b>' + base.label + '</b> to your location...';
+
+    userLat = 13.0827; userLng = 80.2707;
+    try {
+      const pos = await new Promise((res, rej) =>
+        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 })
+      );
+      userLat = pos.coords.latitude;
+      userLng = pos.coords.longitude;
+    } catch(e) {
+      userLat = 12.9716; userLng = 77.5946;
+      infoBar.innerHTML += '<br><small style="color:#d97706;">\u26A0\uFE0F Location access denied \u2014 using Bengaluru as demo destination.</small>';
+    }
+
+    infoBar.innerHTML = '\uD83D\uDDFA\uFE0F Fetching road route via OSRM...';
+    const routeData = await fetchOSRMRoute(base.lat, base.lng, userLat, userLng);
+
+    let routeCoords;
+    if (routeData) {
+      routeCoords  = routeData.coords;
+      totalDistKm  = routeData.distanceKm;
+      totalDurMin  = routeData.durationMin;
+    } else {
+      routeCoords  = interpolateRoute([{ lat:base.lat, lng:base.lng }, { lat:userLat, lng:userLng }]);
+      totalDistKm  = haversineKm(base.lat, base.lng, userLat, userLng).toFixed(1);
+      totalDurMin  = Math.round(totalDistKm * 2.5);
+    }
+    denseRoute   = interpolateRoute(routeCoords);
+    resumeIndex  = 0;
   }
 
-  // Init map centered between base and user
-  const midLat = (base.lat + userLat) / 2;
-  const midLng = (base.lng + userLng) / 2;
+  trackingRoute = denseRoute;
+  trackingIndex = resumeIndex;
+  const totalPoints = denseRoute.length;
+
+  // Init map
+  const startPt = denseRoute[resumeIndex] || { lat: base.lat, lng: base.lng };
+  const midLat = (startPt.lat + (denseRoute[totalPoints-1]||startPt).lat) / 2;
+  const midLng = (startPt.lng + (denseRoute[totalPoints-1]||startPt).lng) / 2;
   trackingMap = L.map('gps-user-map').setView([midLat, midLng], 10);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '\u00A9 OpenStreetMap contributors', maxZoom: 18
   }).addTo(trackingMap);
 
-  // Fetch real road route via OSRM
-  infoBar.innerHTML = '\uD83D\uDDFA\uFE0F Fetching road route via OSRM...';
-  const routeData = await fetchOSRMRoute(base.lat, base.lng, userLat, userLng);
-
-  let routeCoords;
-  let totalDistKm, totalDurMin;
-  if (routeData) {
-    routeCoords = routeData.coords;
-    totalDistKm = routeData.distanceKm;
-    totalDurMin = routeData.durationMin;
-  } else {
-    // Fallback: straight line with curve
-    routeCoords = interpolateRoute([{ lat:base.lat, lng:base.lng }, { lat:userLat, lng:userLng }]);
-    totalDistKm = haversineKm(base.lat, base.lng, userLat, userLng).toFixed(1);
-    totalDurMin = Math.round(totalDistKm * 2.5);
-  }
-
-  // Densify route for smooth animation
-  const denseRoute = interpolateRoute(routeCoords);
-  trackingRoute = denseRoute;
-  trackingIndex = 0;
-
-  // Draw full planned route (grey)
   const plannedLatLngs = denseRoute.map(p => [p.lat, p.lng]);
   L.polyline(plannedLatLngs, { color:'#d1d5db', weight:4, opacity:0.6, dashArray:'8,6' }).addTo(trackingMap);
 
-  // Travelled path polyline (green, grows over time)
-  travelledPolyline = L.polyline([], { color:'#16a34a', weight:5, opacity:0.85 }).addTo(trackingMap);
+  travelledPolyline = L.polyline(
+    denseRoute.slice(0, resumeIndex + 1).map(p => [p.lat, p.lng]),
+    { color:'#16a34a', weight:5, opacity:0.85 }
+  ).addTo(trackingMap);
 
-  // Source marker (machine base)
   const baseIcon = L.divIcon({
     html: '<div style="background:#1a3a1a;color:#fff;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.4);">\uD83C\uDFE0 '+base.label+'</div>',
     iconSize:[140,26], iconAnchor:[70,13], className:''
   });
   L.marker([base.lat, base.lng], { icon: baseIcon }).addTo(trackingMap);
 
-  // Destination marker (user)
   const destIcon = L.divIcon({
     html: '<div style="background:#2563eb;color:#fff;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.4);">\uD83C\uDFE0 Your Location</div>',
     iconSize:[120,26], iconAnchor:[60,13], className:''
   });
-  L.marker([userLat, userLng], { icon: destIcon }).addTo(trackingMap);
+  const destPt = denseRoute[totalPoints - 1];
+  L.marker([destPt.lat, destPt.lng], { icon: destIcon }).addTo(trackingMap);
 
-  // Machine marker (animated)
   const machineIcon = L.divIcon({
     html: '<div style="font-size:2rem;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.4));">\uD83D\uDE9C</div>',
     iconSize:[36,36], iconAnchor:[18,18], className:''
   });
-  trackingMarker = L.marker([base.lat, base.lng], { icon: machineIcon, zIndexOffset: 1000 }).addTo(trackingMap);
+  trackingMarker = L.marker([startPt.lat, startPt.lng], { icon: machineIcon, zIndexOffset: 1000 }).addTo(trackingMap);
 
-  // Fit map to route
   const bounds = L.latLngBounds(plannedLatLngs);
   trackingMap.fitBounds(bounds, { padding:[30,30] });
 
@@ -746,55 +830,60 @@ async function showBookingMap(machineName, bookingId) {
 
   infoBar.innerHTML = '\uD83D\uDFE2 <b>Live Simulation Active</b> &mdash; '+machineName+' is en route from <b>'+base.label+'</b><br>Total route: <b>'+totalDistKm+' km</b> &nbsp;|&nbsp; Est. time: <b>'+totalDurMin+' min</b>';
 
-  // Simulate movement
-  const totalPoints = denseRoute.length;
-  // Simulate at ~40 km/h average. Step interval in ms.
-  const avgSpeedKmh = 38 + Math.random() * 10; // 38-48 km/h
+  const travelledPath = denseRoute.slice(0, resumeIndex + 1).map(p => [p.lat, p.lng]);
   const stepDistKm = parseFloat(totalDistKm) / totalPoints;
-  const stepTimeMs = Math.max(200, (stepDistKm / avgSpeedKmh) * 3600 * 1000 * 0.02); // 50x speed up
-  const travelledPath = [];
 
-  trackingTimer = setInterval(() => {
+  function scheduleNextStep() {
     if (trackingIndex >= totalPoints - 1) {
-      clearInterval(trackingTimer);
       infoBar.innerHTML = '\uD83C\uDF89 <b>'+machineName+' has arrived!</b> Delivery complete.';
       const speedEl = document.getElementById('stat-speed'); if (speedEl) speedEl.textContent = '0 km/h';
       const etaEl = document.getElementById('stat-eta'); if (etaEl) etaEl.textContent = 'Arrived!';
+      clearTrackingState(bookingId);
       return;
     }
-    trackingIndex++;
-    const curr = denseRoute[trackingIndex];
-    const prev = denseRoute[trackingIndex - 1];
-    travelledPath.push([curr.lat, curr.lng]);
-    trackingMarker.setLatLng([curr.lat, curr.lng]);
-    travelledPolyline.setLatLngs(travelledPath);
 
-    // Compute live speed (varies realistically)
-    const noise = 0.85 + Math.random() * 0.3;
-    const liveSpeed = Math.round(avgSpeedKmh * noise);
-    const dir = directionLabel(bearing(prev.lat, prev.lng, curr.lat, curr.lng));
-    const remainingPoints = totalPoints - trackingIndex;
-    const remainingKm = (remainingPoints * stepDistKm).toFixed(1);
-    const remainingMin = Math.round((remainingPoints * stepTimeMs) / 60000 * 50); // undo 50x
+    const intervalMs = getRealisticStepIntervalMs(totalPoints, parseFloat(totalDistKm), trackingIndex);
+    trackingTimer = setTimeout(() => {
+      trackingIndex++;
+      const curr = denseRoute[trackingIndex];
+      const prev = denseRoute[trackingIndex - 1];
+      travelledPath.push([curr.lat, curr.lng]);
+      trackingMarker.setLatLng([curr.lat, curr.lng]);
+      travelledPolyline.setLatLngs(travelledPath);
 
-    // Update stats
-    const speedEl = document.getElementById('stat-speed'); if (speedEl) speedEl.textContent = liveSpeed+' km/h';
-    const etaEl = document.getElementById('stat-eta'); if (etaEl) etaEl.textContent = remainingMin+' min';
-    const distEl = document.getElementById('stat-dist'); if (distEl) distEl.textContent = remainingKm+' km left';
+      const liveSpeed = getDisplaySpeed(totalPoints, parseFloat(totalDistKm), trackingIndex);
+      const dir = directionLabel(bearing(prev.lat, prev.lng, curr.lat, curr.lng));
+      const remainingPoints = totalPoints - trackingIndex;
+      const remainingKm = (remainingPoints * stepDistKm).toFixed(1);
 
-    // Update info bar
-    infoBar.innerHTML = '\uD83D\uDFE2 <b>Live</b> &mdash; Speed: <b>'+liveSpeed+' km/h</b> &nbsp;|&nbsp; Direction: <b>'+dir+'</b> &nbsp;|&nbsp; Remaining: <b>'+remainingKm+' km</b> / <b>'+remainingMin+' min</b>';
+      // Estimate remaining real minutes based on OSRM duration
+      const remainingMin = Math.round((remainingPoints / totalPoints) * parseFloat(totalDurMin));
 
-    // Pan map to follow machine
-    trackingMap.panTo([curr.lat, curr.lng], { animate: true, duration: 0.3 });
+      const speedEl = document.getElementById('stat-speed'); if (speedEl) speedEl.textContent = liveSpeed+' km/h';
+      const etaEl = document.getElementById('stat-eta'); if (etaEl) etaEl.textContent = remainingMin+' min';
+      const distEl = document.getElementById('stat-dist'); if (distEl) distEl.textContent = remainingKm+' km left';
 
-    // Trip log
-    const hist = document.getElementById('trip-history');
-    if (hist && trackingIndex % 20 === 0) {
-      const entry = '<div style="font-size:0.78rem;padding:0.2rem 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">'+new Date().toLocaleTimeString('en-IN')+' &mdash; '+curr.lat.toFixed(5)+', '+curr.lng.toFixed(5)+' &mdash; '+liveSpeed+' km/h '+dir+'</div>';
-      hist.innerHTML = '<h4 style="margin:0 0 0.4rem;font-size:0.85rem;">\uD83D\uDDFA\uFE0F Trip Log</h4>' + entry + (hist.innerHTML.replace(/<h4[^>]*>[^<]*<\/h4>/,'') || '');
-    }
-  }, stepTimeMs);
+      infoBar.innerHTML = '\uD83D\uDFE2 <b>Live</b> &mdash; Speed: <b>'+liveSpeed+' km/h</b> &nbsp;|&nbsp; Direction: <b>'+dir+'</b> &nbsp;|&nbsp; Remaining: <b>'+remainingKm+' km</b> / <b>'+remainingMin+' min</b>';
+
+      trackingMap.panTo([curr.lat, curr.lng], { animate: true, duration: 0.3 });
+
+      // Save progress every 10 steps so refresh can resume
+      if (trackingIndex % 10 === 0) {
+        saveTrackingState(bookingId, trackingIndex, totalPoints, machineName, denseRoute, totalDistKm, totalDurMin);
+      }
+
+      // Trip log every 20 steps
+      const hist = document.getElementById('trip-history');
+      if (hist && trackingIndex % 20 === 0) {
+        const entry = '<div style="font-size:0.78rem;padding:0.2rem 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">'+new Date().toLocaleTimeString('en-IN')+' &mdash; '+curr.lat.toFixed(5)+', '+curr.lng.toFixed(5)+' &mdash; '+liveSpeed+' km/h '+dir+'</div>';
+        hist.innerHTML = '<h4 style="margin:0 0 0.4rem;font-size:0.85rem;">\uD83D\uDDFA\uFE0F Trip Log</h4>' + entry + (hist.innerHTML.replace(/<h4[^>]*>[^<]*<\/h4>/,'') || '');
+      }
+
+      scheduleNextStep();
+    }, intervalMs);
+  }
+
+  scheduleNextStep();
 }
 
 function closeGpsModal() {
@@ -809,7 +898,6 @@ async function initFleetMap() {
   if (fleetMap) { fleetMap.remove(); fleetMap = null; fleetMarkers = {}; }
   fleetMap = L.map('fleet-map').setView([13.135,78.132],13);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'\u00A9 OpenStreetMap contributors'}).addTo(fleetMap);
-  // Base marker
   L.marker([13.135,78.132],{
     icon: L.divIcon({
       html: '<div style="background:#1a3a1a;color:#fff;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.3);">\uD83C\uDFE0 AgroBook Base</div>',
@@ -1069,7 +1157,7 @@ function showUserProfile() {
     '</div>'+
     '<div style="margin-bottom:1rem;">'+
     '<label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:4px;color:#374151;">Email</label>'+
-    '<input id="prof-email" class="form-input" value="'+(currentUser.user_email||'')+' " readonly style="background:#f9fafb;cursor:not-allowed;">'+
+    '<input id="prof-email" class="form-input" value="'+(currentUser.user_email||'')+'" readonly style="background:#f9fafb;cursor:not-allowed;">'+
     '</div>'+
     '<div style="margin-bottom:1rem;">'+
     '<label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:4px;color:#374151;">Phone</label>'+
