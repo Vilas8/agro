@@ -26,34 +26,50 @@ let trackingTimer = null;
 let trackingPolyline = null;
 let travelledPolyline = null;
 
-// ===== TRACKING PERSISTENCE =====
+// ===== TRACKING PERSISTENCE (localStorage, survives refresh & modal close) =====
 // Key: "tracking_<bookingId>"
-// Value: { index, totalPoints, startedAt, machineName, route: [{lat,lng},...], distKm, durMin }
-function saveTrackingState(bookingId, index, totalPoints, machineName, route, distKm, durMin) {
+// Stores: { startedAt (epoch ms), totalPoints, distKm, durMin, machineName,
+//           route: [{lat,lng},...] }
+// Progress is computed from startedAt + elapsed time (time-based, not step-based).
+// So even when the modal is closed, the machine keeps moving on the timeline.
+
+function saveTrackingState(bookingId, startedAt, totalPoints, machineName, route, distKm, durMin) {
   try {
-    sessionStorage.setItem('tracking_' + bookingId, JSON.stringify({
-      index, totalPoints, machineName,
-      route,           // full dense route array
-      distKm, durMin,
+    localStorage.setItem('tracking_' + bookingId, JSON.stringify({
+      startedAt, totalPoints, machineName, route, distKm, durMin,
       savedAt: Date.now()
     }));
   } catch(e) {}
 }
+
 function loadTrackingState(bookingId) {
   try {
-    const raw = sessionStorage.getItem('tracking_' + bookingId);
+    const raw = localStorage.getItem('tracking_' + bookingId);
     if (!raw) return null;
     const state = JSON.parse(raw);
-    // Expire after 4 hours (machine won't still be en-route)
+    // Expire after 4 hours
     if (Date.now() - state.savedAt > 4 * 3600 * 1000) {
-      sessionStorage.removeItem('tracking_' + bookingId);
+      localStorage.removeItem('tracking_' + bookingId);
       return null;
     }
     return state;
   } catch(e) { return null; }
 }
+
 function clearTrackingState(bookingId) {
-  try { sessionStorage.removeItem('tracking_' + bookingId); } catch(e) {}
+  try { localStorage.removeItem('tracking_' + bookingId); } catch(e) {}
+}
+
+// Given a saved state, compute what the current progress index should be
+// based on wall-clock time elapsed since tracking started.
+// "1 simulated minute of travel = 2 real seconds" — so total visual duration
+// in real ms = durMin * 2000.
+function computeCurrentIndex(state) {
+  if (!state || !state.startedAt) return 0;
+  const elapsedMs = Date.now() - state.startedAt;
+  const totalVisualMs = state.durMin * 2000; // total animation duration
+  const progress = Math.min(1, elapsedMs / totalVisualMs);
+  return Math.min(state.totalPoints - 1, Math.floor(progress * state.totalPoints));
 }
 
 // ===== BASE MACHINE LOCATIONS (near Kolar) =====
@@ -564,23 +580,44 @@ async function renderUserBookings() {
     container.innerHTML = '<div style="text-align:center;padding:56px 16px;color:#9ca3af"><div style="font-size:3rem;margin-bottom:14px">\uD83D\uDCCB</div><p style="font-size:15px">No bookings yet. Search and book a machine above!</p></div>';
     return;
   }
-  container.innerHTML = userBookings.map(b =>
-    '<div class="booking-card">'+
-    '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'+
-    '<span style="font-family:\'Syne\',sans-serif;font-weight:700;font-size:16px;">'+(b.machine_name||'Machine')+'</span>'+
-    '<span class="badge status-'+((b.status||'pending').toLowerCase())+'">'+(b.status||'Pending')+'</span>'+
-    '</div>'+
-    '<div class="booking-meta" style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;">'+
-    '<span>\uD83C\uDF3E '+(b.crop_type||'-')+'</span>'+
-    '<span>\uD83D\uDCD0 '+(b.acres||'-')+' acres</span>'+
-    '<span>\uD83D\uDCCD '+(b.distance||'-')+' km</span>'+
-    '<span>\uD83D\uDCB0 \u20B9'+((b.total_cost||0).toLocaleString('en-IN'))+'</span>'+
-    '<span>\u23F1\uFE0F '+(b.estimated_hours||'-')+' hrs</span>'+
-    '</div>'+
-    '<div style="font-size:12px;color:#9ca3af;margin-top:6px;">'+(b.created_at ? new Date(b.created_at).toLocaleString('en-IN') : '')+'</div>'+
-    '<button class="btn-sm" onclick="showBookingMap(\''+b.machine_name+'\', \''+b.id+'\')" style="margin-top:10px;font-size:12px;">\uD83D\uDCE1 Track Machine</button>'+
-    '</div>'
-  ).join('');
+  container.innerHTML = userBookings.map(b => {
+    const status = (b.status || 'Pending');
+    const machineName = b.machine_name || 'Machine';
+    const totalCost = Number(b.total_cost) || 0;
+    const isConfirmed = status.toLowerCase() === 'confirmed';
+    // Check if this booking has already been delivered (tracking finished)
+    const savedState = loadTrackingState(b.id);
+    const isDelivered = savedState && computeCurrentIndex(savedState) >= savedState.totalPoints - 1;
+
+    // Track button: only show for Confirmed bookings
+    let trackBtn = '';
+    if (isConfirmed) {
+      if (isDelivered) {
+        trackBtn = '<div style="margin-top:10px;background:#dcfce7;color:#16a34a;font-size:12px;font-weight:700;padding:8px 14px;border-radius:8px;display:inline-block;">\uD83C\uDF89 Machine Delivered!</div>';
+      } else {
+        trackBtn = '<button class="btn-sm" onclick="showBookingMap(\'' + machineName.replace(/'/g,"\\'")
+          + '\', \'' + b.id + '\')" style="margin-top:10px;font-size:12px;">\uD83D\uDCE1 Track Machine</button>';
+      }
+    } else if (status.toLowerCase() === 'pending') {
+      trackBtn = '<div style="margin-top:10px;font-size:12px;color:#9ca3af;font-style:italic;">\u23F3 Awaiting admin confirmation to track</div>';
+    }
+
+    return '<div class="booking-card">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'+
+      '<span style="font-family:\'Syne\',sans-serif;font-weight:700;font-size:16px;">' + machineName + '</span>'+
+      '<span class="badge status-' + status.toLowerCase() + '">' + status + '</span>'+
+      '</div>'+
+      '<div class="booking-meta" style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;">'+
+      '<span>\uD83C\uDF3E ' + (b.crop_type||'-') + '</span>'+
+      '<span>\uD83D\uDCD0 ' + (b.acres||'-') + ' acres</span>'+
+      '<span>\uD83D\uDCCD ' + (b.distance||'-') + ' km</span>'+
+      '<span>\uD83D\uDCB0 \u20B9' + totalCost.toLocaleString('en-IN') + '</span>'+
+      '<span>\u23F1\uFE0F ' + (b.estimated_hours||'-') + ' hrs</span>'+
+      '</div>'+
+      '<div style="font-size:12px;color:#9ca3af;margin-top:6px;">' + (b.created_at ? new Date(b.created_at).toLocaleString('en-IN') : '') + '</div>'+
+      trackBtn +
+      '</div>';
+  }).join('');
 }
 
 // ===== GPS TRACKING — SIMULATION ENGINE =====
@@ -627,7 +664,7 @@ function interpolateRoute(coords) {
   for (let i = 0; i < coords.length - 1; i++) {
     const p1 = coords[i], p2 = coords[i+1];
     const segKm = haversineKm(p1.lat, p1.lng, p2.lat, p2.lng);
-    const steps = Math.max(1, Math.round(segKm * 10)); // 10 points per km = ~100m steps
+    const steps = Math.max(1, Math.round(segKm * 10));
     for (let s = 0; s <= steps; s++) {
       dense.push({
         lat: p1.lat + (p2.lat - p1.lat) * s / steps,
@@ -639,42 +676,25 @@ function interpolateRoute(coords) {
 }
 
 // ===== REALISTIC SPEED ENGINE =====
-// Simulates real road travel:
-//   - Near origin/destination (town): ~20-30 km/h
-//   - Mid-route (highway): ~45-60 km/h
-//   - With random traffic slowdowns
-// Returns step interval in ms for a visual simulation (1 simulated min ≈ 2 real seconds)
 function getRealisticStepIntervalMs(totalPoints, totalDistKm, currentIndex) {
-  const progress = currentIndex / totalPoints; // 0.0 → 1.0
-  // Speed profile: slow at start/end, faster in the middle
+  const progress = currentIndex / totalPoints;
   let baseSpeedKmh;
   if (progress < 0.1 || progress > 0.9) {
-    // Near origin or destination — local roads / village roads
-    baseSpeedKmh = 20 + Math.random() * 10; // 20-30 km/h
+    baseSpeedKmh = 20 + Math.random() * 10;
   } else if (progress < 0.2 || progress > 0.8) {
-    // Transitioning to/from highway
-    baseSpeedKmh = 30 + Math.random() * 15; // 30-45 km/h
+    baseSpeedKmh = 30 + Math.random() * 15;
   } else {
-    // Highway / state road
-    baseSpeedKmh = 45 + Math.random() * 15; // 45-60 km/h
+    baseSpeedKmh = 45 + Math.random() * 15;
   }
-
-  // Random traffic events: 10% chance of slowdown
   if (Math.random() < 0.10) {
-    baseSpeedKmh *= (0.4 + Math.random() * 0.3); // 40-70% of normal speed
+    baseSpeedKmh *= (0.4 + Math.random() * 0.3);
   }
-
   const stepDistKm = totalDistKm / totalPoints;
-  // Real travel time for this step (in seconds)
   const realStepSec = (stepDistKm / baseSpeedKmh) * 3600;
-  // Visual simulation: 1 real minute of travel = 2 seconds on screen
-  // So visual time = real_time * (2 / 60)
   const visualMs = Math.round(realStepSec * (2000 / 60));
-  // Clamp between 150ms (smooth animation) and 800ms (not too slow)
   return Math.max(150, Math.min(800, visualMs));
 }
 
-// Returns instantaneous simulated speed (km/h) for display
 function getDisplaySpeed(totalPoints, totalDistKm, currentIndex) {
   const progress = currentIndex / totalPoints;
   let base;
@@ -690,7 +710,7 @@ function getDisplaySpeed(totalPoints, totalDistKm, currentIndex) {
 }
 
 function stopTracking() {
-  if (trackingTimer) { clearInterval(trackingTimer); trackingTimer = null; }
+  if (trackingTimer) { clearTimeout(trackingTimer); trackingTimer = null; }
   trackingRoute = []; trackingIndex = 0;
 }
 
@@ -728,23 +748,28 @@ async function showBookingMap(machineName, bookingId) {
   const base = MACHINE_BASE_LOCATIONS[machineName] || { lat:13.135, lng:78.132, label:'Kolar Base' };
   const infoBar = document.getElementById('gps-info-bar');
 
-  // ===== CHECK FOR SAVED TRACKING STATE (resume after refresh) =====
+  // ===== LOAD SAVED STATE (time-based: machine kept moving while modal was closed) =====
   const savedState = loadTrackingState(bookingId);
-  let denseRoute, totalDistKm, totalDurMin, resumeIndex;
+  let denseRoute, totalDistKm, totalDurMin, startedAt;
   let userLat, userLng;
 
-  if (savedState && savedState.route && savedState.index < savedState.totalPoints - 1) {
-    // Resume from saved state
+  if (savedState && savedState.route && savedState.route.length > 1) {
+    // Resume: compute where machine is NOW based on elapsed real time
     denseRoute   = savedState.route;
     totalDistKm  = savedState.distKm;
     totalDurMin  = savedState.durMin;
-    resumeIndex  = savedState.index;
-    // Reconstruct user location from last point of route
+    startedAt    = savedState.startedAt;
     userLat = denseRoute[denseRoute.length - 1].lat;
     userLng = denseRoute[denseRoute.length - 1].lng;
-    infoBar.innerHTML = '\uD83D\uDD04 <b>Resuming tracking</b> from where you left off... (' + resumeIndex + '/' + savedState.totalPoints + ' points covered)';
+
+    const resumeIndex = computeCurrentIndex(savedState);
+    trackingIndex = resumeIndex;
+
+    const elapsedMin = Math.round((Date.now() - startedAt) / 60000);
+    infoBar.innerHTML = '\uD83D\uDD04 <b>Tracking resumed</b> &mdash; machine has been moving for <b>' + elapsedMin + ' min</b> (' + resumeIndex + '/' + savedState.totalPoints + ' pts covered)';
   } else {
-    // Fresh start — fetch route
+    // Fresh start — fetch GPS + route
+    trackingIndex = 0;
     infoBar.innerHTML = '\u23F3 Fetching route from <b>' + base.label + '</b> to your location...';
 
     userLat = 13.0827; userLng = 80.2707;
@@ -772,18 +797,40 @@ async function showBookingMap(machineName, bookingId) {
       totalDistKm  = haversineKm(base.lat, base.lng, userLat, userLng).toFixed(1);
       totalDurMin  = Math.round(totalDistKm * 2.5);
     }
-    denseRoute   = interpolateRoute(routeCoords);
-    resumeIndex  = 0;
+    denseRoute = interpolateRoute(routeCoords);
+    startedAt  = Date.now();
+
+    // Save the new tracking state (startedAt = now, index will be computed from time)
+    saveTrackingState(bookingId, startedAt, denseRoute.length, machineName, denseRoute, totalDistKm, totalDurMin);
   }
 
   trackingRoute = denseRoute;
-  trackingIndex = resumeIndex;
   const totalPoints = denseRoute.length;
 
+  // If already delivered (machine arrived while modal was closed)
+  if (trackingIndex >= totalPoints - 1) {
+    infoBar.innerHTML =
+      '<div style="text-align:center;padding:1rem;">'+
+      '<div style="font-size:2.5rem;">\uD83C\uDF89</div>'+
+      '<div style="font-size:1.1rem;font-weight:700;color:#16a34a;margin-top:8px;">'+machineName+' has been Delivered!</div>'+
+      '<div style="font-size:0.85rem;color:#6b7280;margin-top:6px;">Your machine reached the destination successfully.</div>'+
+      '</div>';
+    // Still init map to show final position
+    const destPt = denseRoute[totalPoints - 1];
+    trackingMap = L.map('gps-user-map').setView([destPt.lat, destPt.lng], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '\u00A9 OpenStreetMap contributors', maxZoom: 18 }).addTo(trackingMap);
+    L.polyline(denseRoute.map(p => [p.lat, p.lng]), { color:'#16a34a', weight:5, opacity:0.9 }).addTo(trackingMap);
+    const arrivedIcon = L.divIcon({ html: '<div style="font-size:2rem;">\uD83C\uDFE0</div>', iconSize:[36,36], iconAnchor:[18,18], className:'' });
+    L.marker([destPt.lat, destPt.lng], { icon: arrivedIcon }).addTo(trackingMap);
+    clearTrackingState(bookingId);
+    renderUserBookings(); // refresh the booking list to show "Delivered" badge
+    return;
+  }
+
   // Init map
-  const startPt = denseRoute[resumeIndex] || { lat: base.lat, lng: base.lng };
-  const midLat = (startPt.lat + (denseRoute[totalPoints-1]||startPt).lat) / 2;
-  const midLng = (startPt.lng + (denseRoute[totalPoints-1]||startPt).lng) / 2;
+  const startPt = denseRoute[trackingIndex] || { lat: base.lat, lng: base.lng };
+  const midLat = (startPt.lat + denseRoute[totalPoints-1].lat) / 2;
+  const midLng = (startPt.lng + denseRoute[totalPoints-1].lng) / 2;
   trackingMap = L.map('gps-user-map').setView([midLat, midLng], 10);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '\u00A9 OpenStreetMap contributors', maxZoom: 18
@@ -793,7 +840,7 @@ async function showBookingMap(machineName, bookingId) {
   L.polyline(plannedLatLngs, { color:'#d1d5db', weight:4, opacity:0.6, dashArray:'8,6' }).addTo(trackingMap);
 
   travelledPolyline = L.polyline(
-    denseRoute.slice(0, resumeIndex + 1).map(p => [p.lat, p.lng]),
+    denseRoute.slice(0, trackingIndex + 1).map(p => [p.lat, p.lng]),
     { color:'#16a34a', weight:5, opacity:0.85 }
   ).addTo(trackingMap);
 
@@ -830,23 +877,46 @@ async function showBookingMap(machineName, bookingId) {
 
   infoBar.innerHTML = '\uD83D\uDFE2 <b>Live Simulation Active</b> &mdash; '+machineName+' is en route from <b>'+base.label+'</b><br>Total route: <b>'+totalDistKm+' km</b> &nbsp;|&nbsp; Est. time: <b>'+totalDurMin+' min</b>';
 
-  const travelledPath = denseRoute.slice(0, resumeIndex + 1).map(p => [p.lat, p.lng]);
+  const travelledPath = denseRoute.slice(0, trackingIndex + 1).map(p => [p.lat, p.lng]);
   const stepDistKm = parseFloat(totalDistKm) / totalPoints;
 
   function scheduleNextStep() {
     if (trackingIndex >= totalPoints - 1) {
-      infoBar.innerHTML = '\uD83C\uDF89 <b>'+machineName+' has arrived!</b> Delivery complete.';
+      // === DELIVERED ===
+      infoBar.innerHTML =
+        '<div style="text-align:center;padding:0.75rem;">'+
+        '<div style="font-size:2.5rem;">\uD83C\uDF89</div>'+
+        '<div style="font-size:1.1rem;font-weight:700;color:#16a34a;margin-top:8px;">'+machineName+' Delivered!</div>'+
+        '<div style="font-size:0.85rem;color:#6b7280;margin-top:4px;">Your machine has successfully reached the destination.</div>'+
+        '</div>';
       const speedEl = document.getElementById('stat-speed'); if (speedEl) speedEl.textContent = '0 km/h';
-      const etaEl = document.getElementById('stat-eta'); if (etaEl) etaEl.textContent = 'Arrived!';
+      const etaEl = document.getElementById('stat-eta'); if (etaEl) etaEl.textContent = '\u2705 Arrived!';
+      const distEl = document.getElementById('stat-dist'); if (distEl) distEl.textContent = '0 km left';
       clearTrackingState(bookingId);
+      renderUserBookings(); // update booking card to show "Delivered" badge
       return;
     }
 
     const intervalMs = getRealisticStepIntervalMs(totalPoints, parseFloat(totalDistKm), trackingIndex);
     trackingTimer = setTimeout(() => {
-      trackingIndex++;
+      // Sync index to wall clock in case time jumped (e.g. tab was inactive)
+      const syncedState = loadTrackingState(bookingId);
+      if (syncedState) {
+        const clockIndex = computeCurrentIndex(syncedState);
+        if (clockIndex > trackingIndex + 5) {
+          // Jump ahead silently
+          trackingIndex = Math.min(clockIndex, totalPoints - 1);
+          travelledPolyline.setLatLngs(denseRoute.slice(0, trackingIndex + 1).map(p => [p.lat, p.lng]));
+          trackingMarker.setLatLng([denseRoute[trackingIndex].lat, denseRoute[trackingIndex].lng]);
+        } else {
+          trackingIndex++;
+        }
+      } else {
+        trackingIndex++;
+      }
+
       const curr = denseRoute[trackingIndex];
-      const prev = denseRoute[trackingIndex - 1];
+      const prev = denseRoute[Math.max(0, trackingIndex - 1)];
       travelledPath.push([curr.lat, curr.lng]);
       trackingMarker.setLatLng([curr.lat, curr.lng]);
       travelledPolyline.setLatLngs(travelledPath);
@@ -855,8 +925,6 @@ async function showBookingMap(machineName, bookingId) {
       const dir = directionLabel(bearing(prev.lat, prev.lng, curr.lat, curr.lng));
       const remainingPoints = totalPoints - trackingIndex;
       const remainingKm = (remainingPoints * stepDistKm).toFixed(1);
-
-      // Estimate remaining real minutes based on OSRM duration
       const remainingMin = Math.round((remainingPoints / totalPoints) * parseFloat(totalDurMin));
 
       const speedEl = document.getElementById('stat-speed'); if (speedEl) speedEl.textContent = liveSpeed+' km/h';
@@ -866,11 +934,6 @@ async function showBookingMap(machineName, bookingId) {
       infoBar.innerHTML = '\uD83D\uDFE2 <b>Live</b> &mdash; Speed: <b>'+liveSpeed+' km/h</b> &nbsp;|&nbsp; Direction: <b>'+dir+'</b> &nbsp;|&nbsp; Remaining: <b>'+remainingKm+' km</b> / <b>'+remainingMin+' min</b>';
 
       trackingMap.panTo([curr.lat, curr.lng], { animate: true, duration: 0.3 });
-
-      // Save progress every 10 steps so refresh can resume
-      if (trackingIndex % 10 === 0) {
-        saveTrackingState(bookingId, trackingIndex, totalPoints, machineName, denseRoute, totalDistKm, totalDurMin);
-      }
 
       // Trip log every 20 steps
       const hist = document.getElementById('trip-history');
@@ -888,7 +951,11 @@ async function showBookingMap(machineName, bookingId) {
 
 function closeGpsModal() {
   const m = document.getElementById('gps-modal'); if (m) m.style.display = 'none';
-  stopTracking();
+  // NOTE: Do NOT call stopTracking() here — we want the timer to keep running
+  // so that wall-clock time advances and the machine position is correctly
+  // computed via computeCurrentIndex() when the modal re-opens.
+  // We only stop the visual animation loop:
+  if (trackingTimer) { clearTimeout(trackingTimer); trackingTimer = null; }
   if (trackingMap) { trackingMap.remove(); trackingMap = null; }
 }
 
@@ -1094,7 +1161,7 @@ async function renderAdminBookings() {
       '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'+
       '<div>'+
       '<div style="font-family:\'Syne\',sans-serif;font-weight:700;">'+(b.user_name||'-')+' <span style="font-weight:400;font-size:13px;color:#6b7280;">('+(b.user_email||'-')+')</span></div>'+
-      '<div class="booking-meta" style="margin-top:4px;">\uD83D\uDE9C '+(b.machine_name||'-')+' &nbsp;|&nbsp; \uD83C\uDF3E '+(b.crop_type||'-')+' &nbsp;|&nbsp; \uD83D\uDCD0 '+(b.acres||'-')+' acres &nbsp;|&nbsp; \uD83D\uDCB0 \u20B9'+((b.total_cost||0).toLocaleString('en-IN'))+'</div>'+
+      '<div class="booking-meta" style="margin-top:4px;">\uD83D\uDE9C '+(b.machine_name||'-')+' &nbsp;|&nbsp; \uD83C\uDF3E '+(b.crop_type||'-')+' &nbsp;|&nbsp; \uD83D\uDCD0 '+(b.acres||'-')+' acres &nbsp;|&nbsp; \uD83D\uDCB0 \u20B9'+((Number(b.total_cost)||0).toLocaleString('en-IN'))+'</div>'+
       '</div>'+
       '<div style="display:flex;align-items:center;gap:8px;">'+
       '<span class="badge status-'+((b.status||'pending').toLowerCase())+'">'+(b.status||'Pending')+'</span>'+
