@@ -26,8 +26,6 @@
      PAGE: HOME
 ============================================================ -->
 <div id="page-home" class="page active fade-in">
-
-  <!-- Ticker / Notification Bar -->
   <div class="notif-bar">
     <span class="notif-track">
       &nbsp;&nbsp;Agri-Machines now available in Kolar!&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
@@ -39,8 +37,6 @@
       📍 Bangarpet &bull; Kolar &bull; Mulbagal &bull; Malur&nbsp;&nbsp;&nbsp;
     </span>
   </div>
-
-  <!-- Navbar -->
   <nav class="navbar">
     <div class="nav-inner">
       <a class="nav-logo" onclick="showPage('home');return false;" href="#">
@@ -71,8 +67,6 @@
       </div>
     </div>
   </nav>
-
-  <!-- Hero -->
   <section class="hero-bg">
     <div class="hero-inner">
       <div class="hero-text">
@@ -98,8 +92,6 @@
       </div>
     </div>
   </section>
-
-  <!-- Feature Cards -->
   <section style="background:#fff;">
     <div class="features">
       <div class="feature-card">
@@ -119,8 +111,6 @@
       </div>
     </div>
   </section>
-
-  <!-- How It Works -->
   <section style="background:#fff;padding:0 24px 72px;">
     <div style="max-width:900px;margin:0 auto;text-align:center;padding-bottom:40px;">
       <span class="badge">Simple Process</span>
@@ -144,7 +134,6 @@
       </div>
     </div>
   </section>
-
   <footer style="background:var(--green-deep);padding:36px 16px;text-align:center;">
     <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:#fff;">Agro<span style="color:var(--green-bright);">Book</span></span>
     <p id="footer-text-el" style="color:rgba(255,255,255,0.5);font-size:13px;margin-top:8px;">© 2026 AgroBook. All rights reserved. Serving Kolar farmers.</p>
@@ -406,8 +395,9 @@
   </nav>
   <main class="dashboard-panel">
     <div style="display:flex;gap:8px;margin-bottom:28px;flex-wrap:wrap;">
-      <button class="tab-btn active" id="udash-tab-search" onclick="switchUserTab('search')">🔍 Search &amp; Book</button>
-      <button class="tab-btn" id="udash-tab-bookings" onclick="switchUserTab('bookings')">📋 My Bookings</button>
+      <button class="tab-btn active" id="udash-tab-search"   onclick="switchUserTab('search')">🔍 Search &amp; Book</button>
+      <button class="tab-btn"        id="udash-tab-bookings" onclick="switchUserTab('bookings')">📋 My Bookings</button>
+      <button class="tab-btn"        id="udash-tab-profile"  onclick="switchUserTab('profile')">👤 My Profile</button>
     </div>
 
     <!-- Search & Book -->
@@ -427,7 +417,6 @@
               <label class="form-label" for="select-village">Village</label>
               <select class="form-input" id="select-village" required>
                 <option value="">Select village</option>
-                <option value="Bangarpet">Bangarpet</option>
               </select>
             </div>
             <div style="margin-bottom:18px;">
@@ -438,7 +427,10 @@
                 <option value="Harvester">Harvester</option>
                 <option value="Flip plow">Flip plow</option>
                 <option value="Corn Planter">Corn Planter</option>
-                <option value="other">Other</option>
+                <option value="Rotavator">Rotavator</option>
+                <option value="Paddy Planter">Paddy Planter</option>
+                <option value="Sprayer">Sprayer</option>
+                <option value="Cultivator">Cultivator</option>
               </select>
             </div>
             <div style="margin-bottom:18px;">
@@ -460,7 +452,7 @@
             <div style="margin-bottom:6px;">
               <label class="form-label" for="distance-km">
                 Distance from Machine (km)
-                <button type="button" class="btn-gps" onclick="autoFillDistanceFromGPS()" style="margin-left:8px;font-size:11px;padding:4px 10px;">📡 Auto GPS</button>
+                <button type="button" class="btn-gps" onclick="autoFillDistanceFromGPS()" title="Auto-detect road distance from your location to the selected machine base" style="margin-left:8px;font-size:11px;padding:4px 10px;">📡 Auto GPS</button>
               </label>
               <input class="form-input" type="number" id="distance-km" min="1" step="0.5" placeholder="e.g. 10" required>
             </div>
@@ -477,7 +469,7 @@
               <span style="font-size:2.4rem;" id="res-machine-icon">🌿</span>
               <div>
                 <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;" id="res-machine">Machine</div>
-                <div style="font-size:13px;color:#6b7280;">📍 Kolar | <span id="res-crop"></span> | <span id="res-acres"></span> acres</div>
+                <div style="font-size:13px;color:#6b7280;">📍 Kolar | <span id="res-crop"></span> | <span id="res-acres"></span></div>
               </div>
             </div>
             <div id="res-machine-status" style="display:none;margin-bottom:14px;">
@@ -519,12 +511,7 @@
     <div id="udash-bookings" style="display:none;">
       <div class="glass-card" style="padding:36px 32px;">
         <h2 style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;margin-bottom:20px;">My Bookings</h2>
-        <div id="user-bookings-list">
-          <div style="text-align:center;padding:56px 16px;color:#9ca3af;">
-            <div style="font-size:3rem;margin-bottom:14px;">📭</div>
-            <p style="font-size:15px;">No bookings yet. Search and book a machine above!</p>
-          </div>
-        </div>
+        <div id="user-bookings-list"></div>
       </div>
     </div>
   </main>
@@ -536,6 +523,10 @@
 
 <!-- ============================================================
      PAGE: ADMIN DASHBOARD
+     IDs aligned to match script.js exactly:
+       admin-tab-machines, admin-tab-users, admin-tab-bookings, admin-tab-fleet
+       cfg-machine-name, cfg-rate, cfg-cost-km, cfg-petrol, cfg-driver, cfg-availability
+       geofence-alerts
 ============================================================ -->
 <div id="page-admin-dashboard" class="page fade-in">
   <div class="notif-bar">
@@ -549,7 +540,7 @@
     <div class="nav-inner">
       <div class="nav-logo" style="cursor:default;">
         <div class="nav-logo-icon">
-          <svg width="22" height="22" viewBox="0 0 24 0 24" fill="none" stroke="white" stroke-width="2.5">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
             <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
             <polyline points="9 22 9 12 15 12 15 22"/>
           </svg>
@@ -563,43 +554,51 @@
     </div>
   </nav>
   <main class="dashboard-panel">
+    <!-- Tab buttons: IDs match script.js switchAdminTab keys -->
     <div style="display:flex;gap:8px;margin-bottom:28px;flex-wrap:wrap;">
-      <button class="tab-btn active" id="adm-tab-machine"  onclick="switchAdminTab('machine')">🚜 Machines</button>
-      <button class="tab-btn"        id="adm-tab-users"    onclick="switchAdminTab('users')">👤 Users</button>
-      <button class="tab-btn"        id="adm-tab-bookings" onclick="switchAdminTab('bookings')">📋 Bookings</button>
-      <button class="tab-btn"        id="adm-tab-tracker"  onclick="switchAdminTab('tracker')">📡 Live Tracker</button>
+      <button class="tab-btn active" id="admin-btn-machines" onclick="switchAdminTab('machines')">🚜 Machines</button>
+      <button class="tab-btn"        id="admin-btn-users"    onclick="switchAdminTab('users')">👤 Users</button>
+      <button class="tab-btn"        id="admin-btn-bookings" onclick="switchAdminTab('bookings')">📋 Bookings</button>
+      <button class="tab-btn"        id="admin-btn-fleet"    onclick="switchAdminTab('fleet')">📡 Live Tracker</button>
     </div>
 
-    <div id="adm-machine">
+    <!-- MACHINES TAB — id="admin-tab-machines" -->
+    <div id="admin-tab-machines">
       <div class="two-col-grid">
         <div class="glass-card" style="padding:36px 32px;">
           <div style="display:flex;align-items:center;gap:14px;margin-bottom:26px;">
-            <span style="font-size:2.2rem;" id="admin-machine-icon">🌿</span>
+            <span style="font-size:2.2rem;">🌿</span>
             <div style="flex:1;">
-              <select id="admin-machine-selector" class="form-input" style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;" onchange="onAdminMachineChange()">
-                <option value="Grass Cutter">Grass Cutter</option>
-                <option value="Harvester">Harvester 🌾</option>
-                <option value="Flip plow">Flip Plow 🔄</option>
-                <option value="Corn Planter">Corn Planter 🌽</option>
-              </select>
-              <div style="margin-top:8px;">
-                <span class="badge" id="machine-avail-badge">Available</span>
+              <!-- machine-tabs for script.js switchAdminMachine -->
+              <div id="machine-tabs" style="display:flex;flex-wrap:wrap;gap:6px;">
+                <button class="machine-tab-btn active" data-machine="Grass Cutter"   onclick="switchAdminMachine('Grass Cutter')">🌿 Grass Cutter</button>
+                <button class="machine-tab-btn"        data-machine="Harvester"      onclick="switchAdminMachine('Harvester')">🌾 Harvester</button>
+                <button class="machine-tab-btn"        data-machine="Flip plow"      onclick="switchAdminMachine('Flip plow')">🔄 Flip Plow</button>
+                <button class="machine-tab-btn"        data-machine="Corn Planter"   onclick="switchAdminMachine('Corn Planter')">🌽 Corn Planter</button>
+                <button class="machine-tab-btn"        data-machine="Rotavator"      onclick="switchAdminMachine('Rotavator')">⚙️ Rotavator</button>
+                <button class="machine-tab-btn"        data-machine="Paddy Planter"  onclick="switchAdminMachine('Paddy Planter')">🌱 Paddy Planter</button>
+                <button class="machine-tab-btn"        data-machine="Sprayer"        onclick="switchAdminMachine('Sprayer')">💧 Sprayer</button>
+                <button class="machine-tab-btn"        data-machine="Cultivator"     onclick="switchAdminMachine('Cultivator')">🚜 Cultivator</button>
               </div>
             </div>
           </div>
           <form id="machine-form" onsubmit="saveMachineConfig(event)" novalidate>
+            <!-- cfg-machine-name: read by saveMachineConfig -->
+            <input type="hidden" id="cfg-machine-name" value="Grass Cutter">
             <div class="machine-form-grid">
               <div>
                 <label class="form-label" for="cfg-rate">Rate per Acre (₹)</label>
                 <input class="form-input" type="number" id="cfg-rate" placeholder="e.g. 800" min="0" required>
               </div>
               <div>
-                <label class="form-label" for="cfg-cpkm">Cost per km (₹)</label>
-                <input class="form-input" type="number" id="cfg-cpkm" placeholder="e.g. 15" min="0" required>
+                <!-- ID must be cfg-cost-km to match script.js -->
+                <label class="form-label" for="cfg-cost-km">Cost per km (₹)</label>
+                <input class="form-input" type="number" id="cfg-cost-km" placeholder="e.g. 15" min="0" required>
               </div>
               <div>
-                <label class="form-label" for="cfg-petrol-km">Petrol Cost/km (₹)</label>
-                <input class="form-input" type="number" id="cfg-petrol-km" placeholder="e.g. 25" min="0" required>
+                <!-- ID must be cfg-petrol to match script.js -->
+                <label class="form-label" for="cfg-petrol">Petrol Cost/km (₹)</label>
+                <input class="form-input" type="number" id="cfg-petrol" placeholder="e.g. 25" min="0" required>
               </div>
               <div>
                 <label class="form-label" for="cfg-driver">Driver Cost (₹)</label>
@@ -607,149 +606,71 @@
               </div>
             </div>
             <div style="margin-top:18px;">
-              <label class="form-label" for="cfg-avail">Availability</label>
-              <select class="form-input" id="cfg-avail">
+              <!-- ID must be cfg-availability to match script.js -->
+              <label class="form-label" for="cfg-availability">Availability</label>
+              <select class="form-input" id="cfg-availability">
                 <option value="Available">Available</option>
                 <option value="Busy">Busy</option>
                 <option value="Maintenance">Maintenance</option>
               </select>
             </div>
             <div id="machine-save-error" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 14px;border-radius:8px;font-size:13px;margin:12px 0;"></div>
-            <button type="submit" id="machine-save-btn" class="btn-primary" style="width:100%;margin-top:18px;font-size:15px;padding:13px;">Save Configuration</button>
+            <button type="submit" id="save-cfg-btn" class="btn-primary" style="width:100%;margin-top:18px;font-size:15px;padding:13px;">Save Configuration</button>
           </form>
         </div>
         <div>
           <h3 style="font-family:'Syne',sans-serif;font-weight:700;font-size:17px;color:var(--green-deep);margin-bottom:18px;">Current Machine Rates</h3>
           <div style="display:flex;flex-direction:column;gap:14px;">
-            <div class="stat-card">
-              <div style="font-size:28px;font-weight:800;font-family:'Syne',sans-serif;color:var(--green-deep);" id="disp-rate">₹800</div>
-              <div style="font-size:13px;color:#6b7280;margin-top:6px;">Rate per Acre</div>
-            </div>
-            <div class="stat-card">
-              <div style="font-size:28px;font-weight:800;font-family:'Syne',sans-serif;color:var(--green-deep);" id="disp-cpkm">₹15</div>
-              <div style="font-size:13px;color:#6b7280;margin-top:6px;">Cost per km (₹)</div>
-            </div>
-            <div class="stat-card">
-              <div style="font-size:28px;font-weight:800;font-family:'Syne',sans-serif;color:var(--green-deep);" id="disp-petrol-km">₹25</div>
-              <div style="font-size:13px;color:#6b7280;margin-top:6px;">Petrol Cost per km</div>
-            </div>
-            <div class="stat-card">
-              <div style="font-size:28px;font-weight:800;font-family:'Syne',sans-serif;color:var(--green-deep);" id="disp-driver">₹600</div>
-              <div style="font-size:13px;color:#6b7280;margin-top:6px;">Driver Cost</div>
-            </div>
+            <div class="stat-card"><div style="font-size:28px;font-weight:800;font-family:'Syne',sans-serif;color:var(--green-deep);" id="disp-rate">₹800</div><div style="font-size:13px;color:#6b7280;margin-top:6px;">Rate per Acre</div></div>
+            <div class="stat-card"><div style="font-size:28px;font-weight:800;font-family:'Syne',sans-serif;color:var(--green-deep);" id="disp-cpkm">₹15</div><div style="font-size:13px;color:#6b7280;margin-top:6px;">Cost per km</div></div>
+            <div class="stat-card"><div style="font-size:28px;font-weight:800;font-family:'Syne',sans-serif;color:var(--green-deep);" id="disp-petrol-km">₹25</div><div style="font-size:13px;color:#6b7280;margin-top:6px;">Petrol Cost per km</div></div>
+            <div class="stat-card"><div style="font-size:28px;font-weight:800;font-family:'Syne',sans-serif;color:var(--green-deep);" id="disp-driver">₹600</div><div style="font-size:13px;color:#6b7280;margin-top:6px;">Driver Cost</div></div>
           </div>
         </div>
       </div>
-      <div id="admin-machine-container" style="display:none;"></div>
     </div>
 
-    <div id="adm-users" style="display:none;">
+    <!-- USERS TAB — id="admin-tab-users" -->
+    <div id="admin-tab-users" style="display:none;">
       <div class="glass-card" style="padding:36px 32px;">
         <h2 style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;margin-bottom:22px;">Registered Users</h2>
-        <div id="admin-users-list">
-          <div style="text-align:center;padding:56px 16px;color:#9ca3af;">
-            <div style="font-size:3rem;margin-bottom:14px;">👤</div>
-            <p style="font-size:15px;">No users registered yet.</p>
-          </div>
-        </div>
-        <div id="admin-users-container" style="display:none;"></div>
+        <div id="admin-users-list"></div>
       </div>
     </div>
 
-    <div id="adm-bookings" style="display:none;">
+    <!-- BOOKINGS TAB — id="admin-tab-bookings" -->
+    <div id="admin-tab-bookings" style="display:none;">
       <div class="glass-card" style="padding:36px 32px;">
         <h2 style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;margin-bottom:22px;">All Bookings</h2>
-        <div id="admin-bookings-list">
-          <div style="text-align:center;padding:56px 16px;color:#9ca3af;">
-            <div style="font-size:3rem;margin-bottom:14px;">📭</div>
-            <p style="font-size:15px;">No bookings yet.</p>
-          </div>
-        </div>
-        <div id="admin-bookings-container" style="display:none;"></div>
+        <div id="admin-bookings-list"></div>
       </div>
     </div>
 
-    <div id="adm-tracker" style="display:none;">
+    <!-- FLEET / LIVE TRACKER TAB — id="admin-tab-fleet" -->
+    <div id="admin-tab-fleet" style="display:none;">
       <div class="glass-card" style="padding:36px 32px;">
         <h2 style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;margin-bottom:6px;">📡 Live Fleet Map</h2>
-        <p style="font-size:13px;color:#6b7280;margin-bottom:4px;">🟢 Available &nbsp; 🔴 Busy &nbsp; 🟡 Maintenance &nbsp;&mdash;&nbsp; Auto-refreshes every 30s</p>
-        <div id="fleet-map"></div>
+        <p style="font-size:13px;color:#6b7280;margin-bottom:4px;">🟢 Available &nbsp;🔴 En Route &nbsp;🟡 Maintenance &mdash; Auto-refreshes every 30s</p>
+        <div id="fleet-map" style="height:420px;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;margin-bottom:12px;"></div>
         <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-gps" onclick="refreshFleetMap()">🔄 Refresh Now</button>
         </div>
-        <div class="gps-panel">
-          <h3>⚠️ Geofence Alerts
-            <button class="btn-gps" style="float:right;" onclick="loadGeofenceAlerts()">Refresh</button>
+        <div class="gps-panel" style="margin-top:16px;">
+          <h3 style="font-family:'Syne',sans-serif;font-weight:700;font-size:15px;margin-bottom:10px;">⚠️ Geofence Alerts
+            <button class="btn-gps" style="float:right;font-size:12px;" onclick="loadGeofenceAlerts()">Refresh</button>
           </h3>
-          <div id="geofence-alerts-list" style="clear:both;">Loading alerts...</div>
+          <!-- ID must be geofence-alerts to match script.js -->
+          <div id="geofence-alerts" style="clear:both;">Loading alerts...</div>
         </div>
       </div>
     </div>
+
   </main>
   <footer style="background:var(--green-deep);padding:36px 16px;text-align:center;margin-top:48px;">
     <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:#fff;">Agro<span style="color:var(--green-bright);">Book</span></span>
     <p style="color:rgba(255,255,255,0.5);font-size:13px;margin-top:8px;">© 2026 AgroBook. All rights reserved. Serving Kolar farmers.</p>
   </footer>
 </div>
-
-<script>
-function switchAdminTab(tab) {
-  ['machine','users','bookings','tracker'].forEach(t => {
-    const p = document.getElementById('adm-' + t);
-    const b = document.getElementById('adm-tab-' + t);
-    if (p) p.style.display = (t === tab) ? '' : 'none';
-    if (b) b.classList.toggle('active', t === tab);
-  });
-  if (tab === 'machine')  { if(typeof renderAdminMachine  === 'function') renderAdminMachine(); }
-  if (tab === 'users')    { if(typeof renderAdminUsers    === 'function') renderAdminUsers(); }
-  if (tab === 'bookings') { if(typeof renderAdminBookings === 'function') renderAdminBookings(); }
-  if (tab === 'tracker')  { if(typeof refreshFleetMap    === 'function') setTimeout(refreshFleetMap, 200); }
-}
-function switchUserTab(tab) {
-  ['search','bookings'].forEach(t => {
-    const p = document.getElementById('udash-' + t);
-    const b = document.getElementById('udash-tab-' + t);
-    if (p) p.style.display = (t === tab) ? '' : 'none';
-    if (b) b.classList.toggle('active', t === tab);
-  });
-  if (tab === 'bookings' && typeof renderUserBookings === 'function') renderUserBookings();
-}
-(function restoreSession() {
-  try {
-    const sess = JSON.parse(sessionStorage.getItem('agrobook_session') || 'null');
-    if (!sess) return;
-    if (sess.isAdmin) {
-      window.addEventListener('load', () => setTimeout(() => {
-        if (typeof isAdmin !== 'undefined') isAdmin = true;
-        showPage('admin-dashboard');
-      }, 150));
-    } else if (sess.user) {
-      window.addEventListener('load', () => setTimeout(() => {
-        if (typeof currentUser !== 'undefined') currentUser = sess.user;
-        const el = document.getElementById('dash-username');
-        if (el) el.textContent = '👤 ' + sess.user.user_name;
-        showPage('user-dashboard');
-      }, 150));
-    }
-  } catch(e) { sessionStorage.removeItem('agrobook_session'); }
-})();
-window.addEventListener('load', () => {
-  const oLogout = window.logout;
-  window.logout = function() { sessionStorage.removeItem('agrobook_session'); if(typeof oLogout==='function') oLogout(); };
-  const oLogin = window.handleLogin;
-  window.handleLogin = async function(e) {
-    await oLogin.call(this, e);
-    if (typeof currentUser !== 'undefined' && currentUser)
-      sessionStorage.setItem('agrobook_session', JSON.stringify({ user: currentUser }));
-  };
-  const oAdminLogin = window.handleAdminLogin;
-  window.handleAdminLogin = async function(e) {
-    await oAdminLogin.call(this, e);
-    if (typeof isAdmin !== 'undefined' && isAdmin)
-      sessionStorage.setItem('agrobook_session', JSON.stringify({ isAdmin: true }));
-  };
-});
-</script>
 
 </body>
 </html>
