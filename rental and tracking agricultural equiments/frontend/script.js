@@ -459,7 +459,7 @@ function calculateCost(e) {
   pendingBookingData = { machine_name:machineType, crop_type:crop, acres, distance:dist, machine_cost, travel_cost, driver_cost, total_cost, estimated_hours:estHours };
 }
 
-// FIX: autoFillDistanceFromGPS now delegates to handleAutoGPS with OSRM road distance
+// FIX 2: autoFillDistanceFromGPS — OSRM road distance from user GPS to machine base
 async function autoFillDistanceFromGPS() {
   const machineName = document.getElementById('machine-type').value;
   await handleAutoGPS(machineName);
@@ -525,11 +525,14 @@ async function confirmBooking() {
 }
 
 // ===== USER DASHBOARD =====
+// FIX 3: switchUserTab now properly handles profile tab
 function switchUserTab(tab) {
   document.getElementById('udash-search').style.display   = tab==='search'   ? '' : 'none';
   document.getElementById('udash-bookings').style.display = tab==='bookings' ? '' : 'none';
   document.getElementById('udash-tab-search').classList.toggle('active',   tab==='search');
   document.getElementById('udash-tab-bookings').classList.toggle('active', tab==='bookings');
+  const profileTabBtn = document.getElementById('udash-tab-profile');
+  if (profileTabBtn) profileTabBtn.classList.toggle('active', tab==='profile');
   if (tab === 'bookings') renderUserBookings();
   if (tab === 'profile') showUserProfile();
 }
@@ -574,13 +577,11 @@ async function renderUserBookings() {
 
 // ===== GPS TRACKING — SIMULATION ENGINE =====
 
-// FEATURE 2: startTracking + showTrackingModal wrappers
 function startTracking(machineName, bookingId) {
   showTrackingModal(machineName, bookingId);
 }
 
 async function showTrackingModal(machineName, bookingId) {
-  // Delegates to full showBookingMap implementation
   await showBookingMap(machineName, bookingId);
 }
 
@@ -751,15 +752,25 @@ async function showBookingMap(machineName, bookingId) {
   infoBar.innerHTML = '🟢 <b>Live Simulation Active</b> &mdash; '+machineName+' is en route from <b>'+base.label+'</b><br>Total route: <b>'+totalDistKm+' km</b> &nbsp;|&nbsp; Est. time: <b>'+totalDurMin+' min</b>';
 
   const totalPoints = denseRoute.length;
-  const avgSpeedKmh = 38 + Math.random() * 10;
+  // FIX 1: Realistic agricultural machine speed 5–7 km/h; stepTimeMs compression 0.15
+  const avgSpeedKmh = 5 + Math.random() * 2;
   const stepDistKm = parseFloat(totalDistKm) / totalPoints;
-  const stepTimeMs = Math.max(200, (stepDistKm / avgSpeedKmh) * 3600 * 1000 * 0.02);
+  const stepTimeMs = Math.max(200, (stepDistKm / avgSpeedKmh) * 3600 * 1000 * 0.15);
   const travelledPath = [];
 
   trackingTimer = setInterval(() => {
     if (trackingIndex >= totalPoints - 1) {
       clearInterval(trackingTimer);
-      infoBar.innerHTML = '🎉 <b>'+machineName+' has arrived!</b> Delivery complete.';
+      // FIX 2: Rich arrival card instead of plain text
+      const arrivalDate = new Date().toLocaleDateString('en-IN', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
+      const arrivalTime = new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
+      infoBar.innerHTML =
+        '<div style="background:#f0fdf4;border:1px solid #16a34a;border-radius:10px;padding:0.85rem 1rem;">'+
+        '<div style="font-size:1rem;font-weight:700;color:#16a34a;margin-bottom:4px;">✅ Destination Reached</div>'+
+        '<div style="font-size:0.88rem;color:#374151;"><b>'+machineName+'</b> has arrived successfully.</div>'+
+        '<div style="font-size:0.82rem;color:#6b7280;margin-top:4px;">📅 '+arrivalDate+' &nbsp;⏰ '+arrivalTime+'</div>'+
+        '<span style="display:inline-block;margin-top:6px;background:#16a34a;color:#fff;font-size:0.75rem;padding:2px 10px;border-radius:20px;font-weight:600;">✅ Destination Reached</span>'+
+        '</div>';
       const speedEl = document.getElementById('stat-speed'); if (speedEl) speedEl.textContent = '0 km/h';
       const etaEl = document.getElementById('stat-eta'); if (etaEl) etaEl.textContent = 'Arrived!';
       return;
@@ -772,7 +783,7 @@ async function showBookingMap(machineName, bookingId) {
     travelledPolyline.setLatLngs(travelledPath);
 
     const noise = 0.85 + Math.random() * 0.3;
-    const liveSpeed = Math.round(avgSpeedKmh * noise);
+    const liveSpeed = (avgSpeedKmh * noise).toFixed(1);
     const dir = directionLabel(bearing(prev.lat, prev.lng, curr.lat, curr.lng));
     const remainingPoints = totalPoints - trackingIndex;
     const remainingKm = (remainingPoints * stepDistKm).toFixed(1);
@@ -837,20 +848,61 @@ async function initFleetMap() {
   await loadGeofenceAlerts();
 }
 
+// FIX 5: Admin fleet map shows live interpolated position for Confirmed/rented machines
 async function refreshFleetMap() {
   if (!fleetMap) return;
   const statusColors = {'Available':'#16a34a','Busy':'#dc2626','Maintenance':'#d97706'};
   const statusDot    = {'Available':'🟢','Busy':'🔴','Maintenance':'🟡'};
   const machineEmoji = {'Grass Cutter':'🌿','Harvester':'🌾','Flip plow':'🔄','Corn Planter':'🌽'};
 
+  // Get confirmed (rented) bookings to compute live position
+  const confirmedBookings = allData.filter(r => r.type === 'booking' && (r.status || '').toLowerCase() === 'confirmed');
+
   const machinesToShow = Object.keys(MACHINE_BASE_LOCATIONS);
   machinesToShow.forEach(machineName => {
     const base  = MACHINE_BASE_LOCATIONS[machineName];
-    const lat   = base.lat, lng = base.lng;
     const avail = (machineConfigs[machineName]||{}).availability || 'Available';
     const color = statusColors[avail]  || '#6b7280';
     const dot   = statusDot[avail]     || '🟢';
     const emoji = machineEmoji[machineName] || '🚜';
+
+    // Check if this machine has an active confirmed booking
+    const activeBooking = confirmedBookings.find(b => b.machine_name === machineName);
+    let lat = base.lat, lng = base.lng;
+    let isEnRoute = false;
+    let progressPct = 0;
+    let bookedBy = '';
+
+    if (activeBooking) {
+      isEnRoute = true;
+      bookedBy = activeBooking.user_name || '';
+      // Interpolate position: assume 4h trip window from created_at
+      const tripWindowMs = 4 * 60 * 60 * 1000;
+      const createdAt = new Date(activeBooking.created_at || Date.now()).getTime();
+      const elapsed = Date.now() - createdAt;
+      progressPct = Math.min(1, Math.max(0, elapsed / tripWindowMs));
+      // Simulate SE direction movement by booking distance
+      const distKm = parseFloat(activeBooking.distance) || 10;
+      const headingRad = 135 * Math.PI / 180; // SE
+      const movedKm = distKm * progressPct;
+      const deltaLat = (movedKm / 111) * Math.cos(headingRad);
+      const deltaLng = (movedKm / (111 * Math.cos(base.lat * Math.PI / 180))) * Math.sin(headingRad);
+      lat = base.lat + deltaLat;
+      lng = base.lng + deltaLng;
+    }
+
+    // Inject CSS for fleet pulse animation if not already present
+    if (!document.getElementById('fleet-pulse-style')) {
+      const style = document.createElement('style');
+      style.id = 'fleet-pulse-style';
+      style.textContent = '@keyframes fleetPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.6;transform:scale(1.3)} }';
+      document.head.appendChild(style);
+    }
+
+    const enRouteBadge = isEnRoute
+      ? '<div style="font-size:9px;color:#dc2626;font-weight:700;animation:fleetPulse 1.2s infinite;margin-top:1px;">🔴 En Route</div>'
+      : '';
+
     const iconHtml =
       '<div style="display:flex;flex-direction:column;align-items:center;">'+
       '<div style="background:#fff;border:2px solid '+color+';border-radius:20px;padding:4px 10px;box-shadow:0 2px 8px rgba(0,0,0,0.15);display:flex;align-items:center;gap:5px;white-space:nowrap;">'+
@@ -858,21 +910,26 @@ async function refreshFleetMap() {
       '<span style="font-size:11px;font-weight:700;color:#1a3a1a;font-family:sans-serif;">'+machineName+'</span>'+
       '<span style="font-size:11px;">'+dot+'</span>'+
       '</div>'+
+      enRouteBadge+
       '<div style="width:2px;height:6px;background:'+color+';"></div>'+
       '<div style="width:7px;height:7px;border-radius:50%;background:'+color+';border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.25);"></div>'+
       '</div>';
-    const icon  = L.divIcon({html:iconHtml,iconSize:[150,54],iconAnchor:[75,54],className:''});
-    const popup =
-      '<b>'+emoji+' '+machineName+'</b><br>'+
-      '<span style="color:'+color+';font-weight:600;">'+dot+' '+avail+'</span><br>'+
-      '📍 '+base.label+'<br>'+
-      '<small>GPS: '+lat.toFixed(4)+', '+lng.toFixed(4)+'</small>';
+    const icon  = L.divIcon({html:iconHtml,iconSize:[150,64],iconAnchor:[75,64],className:''});
+    const popupLines = isEnRoute
+      ? '<b>'+emoji+' '+machineName+'</b><br>'+
+        '<span style="color:#dc2626;font-weight:600;">🔴 En Route ('+(Math.round(progressPct*100))+'% complete)</span><br>'+
+        '👤 Booked by: <b>'+bookedBy+'</b><br>'+
+        '📍 Live: '+lat.toFixed(4)+', '+lng.toFixed(4)
+      : '<b>'+emoji+' '+machineName+'</b><br>'+
+        '<span style="color:'+color+';font-weight:600;">'+dot+' '+avail+'</span><br>'+
+        '📍 '+base.label+'<br>'+
+        '<small>GPS: '+base.lat.toFixed(4)+', '+base.lng.toFixed(4)+'</small>';
     if (fleetMarkers[machineName]) {
       fleetMarkers[machineName].setLatLng([lat,lng]);
       fleetMarkers[machineName].setIcon(icon);
-      fleetMarkers[machineName].setPopupContent(popup);
+      fleetMarkers[machineName].setPopupContent(popupLines);
     } else {
-      fleetMarkers[machineName] = L.marker([lat,lng],{icon}).addTo(fleetMap).bindPopup(popup);
+      fleetMarkers[machineName] = L.marker([lat,lng],{icon}).addTo(fleetMap).bindPopup(popupLines);
     }
   });
 }
