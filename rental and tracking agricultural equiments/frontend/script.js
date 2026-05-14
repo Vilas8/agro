@@ -459,24 +459,38 @@ function calculateCost(e) {
   pendingBookingData = { machine_name:machineType, crop_type:crop, acres, distance:dist, machine_cost, travel_cost, driver_cost, total_cost, estimated_hours:estHours };
 }
 
+// FIX: autoFillDistanceFromGPS now delegates to handleAutoGPS with OSRM road distance
 async function autoFillDistanceFromGPS() {
+  const machineName = document.getElementById('machine-type').value;
+  await handleAutoGPS(machineName);
+}
+
+async function handleAutoGPS(machineName) {
   if (!navigator.geolocation) { showToast('Geolocation not supported','error'); return; }
-  navigator.geolocation.getCurrentPosition(async pos => {
+  const btn = document.querySelector('[onclick*="autoFillDistanceFromGPS"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Getting GPS...'; }
+  try {
+    const pos = await new Promise((res, rej) =>
+      navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000 })
+    );
     const userLat = pos.coords.latitude, userLng = pos.coords.longitude;
-    const machineType = document.getElementById('machine-type').value;
-    if (!machineType) { showToast('Select a machine type first','error'); return; }
-    const base = MACHINE_BASE_LOCATIONS[machineType] || { lat:13.135, lng:78.132 };
+    if (!machineName) { showToast('Select a machine type first','error'); return; }
+    const base = MACHINE_BASE_LOCATIONS[machineName] || { lat:13.135, lng:78.132 };
+    // Try OSRM road distance first, fallback to haversine * 1.3
+    let distKm;
     try {
-      const R = 6371;
-      const dLat = (userLat - base.lat) * Math.PI / 180;
-      const dLng = (userLng - base.lng) * Math.PI / 180;
-      const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(base.lat*Math.PI/180)*Math.cos(userLat*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      const distKm = (R * c * 1.3).toFixed(1);
-      document.getElementById('distance-km').value = distKm;
-      showToast('Distance: ' + distKm + ' km 📍','success');
-    } catch(e) { showToast('GPS distance error: ' + e.message,'error'); }
-  }, () => showToast('Location access denied','error'));
+      const routeData = await fetchOSRMRoute(base.lat, base.lng, userLat, userLng);
+      distKm = routeData ? routeData.distanceKm : (haversineKm(base.lat, base.lng, userLat, userLng) * 1.3).toFixed(1);
+    } catch(e) {
+      distKm = (haversineKm(base.lat, base.lng, userLat, userLng) * 1.3).toFixed(1);
+    }
+    document.getElementById('distance-km').value = distKm;
+    showToast('Road distance from ' + (base.label || machineName) + ': ' + distKm + ' km 📍', 'success');
+  } catch(e) {
+    showToast('Location access denied or timed out','error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '📡 Auto GPS'; }
+  }
 }
 
 async function confirmBooking() {
@@ -517,6 +531,7 @@ function switchUserTab(tab) {
   document.getElementById('udash-tab-search').classList.toggle('active',   tab==='search');
   document.getElementById('udash-tab-bookings').classList.toggle('active', tab==='bookings');
   if (tab === 'bookings') renderUserBookings();
+  if (tab === 'profile') showUserProfile();
 }
 
 async function renderUserBookings() {
@@ -537,7 +552,7 @@ async function renderUserBookings() {
   container.innerHTML = userBookings.map(b => {
     const isConfirmed = (b.status || '').toLowerCase() === 'confirmed';
     const trackBtn = isConfirmed
-      ? '<button class="btn-sm" onclick="showBookingMap(\''+b.machine_name+'\', \''+b.id+'\')" style="margin-top:10px;font-size:12px;">📡 Track Machine</button>'
+      ? '<button class="btn-sm" onclick="startTracking(\''+b.machine_name+'\', \''+b.id+'\')" style="margin-top:10px;font-size:12px;">📡 Track Machine</button>'
       : '';
     return '<div class="booking-card">'+
       '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'+
@@ -558,6 +573,17 @@ async function renderUserBookings() {
 }
 
 // ===== GPS TRACKING — SIMULATION ENGINE =====
+
+// FEATURE 2: startTracking + showTrackingModal wrappers
+function startTracking(machineName, bookingId) {
+  showTrackingModal(machineName, bookingId);
+}
+
+async function showTrackingModal(machineName, bookingId) {
+  // Delegates to full showBookingMap implementation
+  await showBookingMap(machineName, bookingId);
+}
+
 function haversineKm(lat1, lng1, lat2, lng2) {
   const R = 6371;
   const dLat = (lat2-lat1)*Math.PI/180;
@@ -773,9 +799,30 @@ function closeGpsModal() {
   if (trackingMap) { trackingMap.remove(); trackingMap = null; }
 }
 
+// FEATURE 1: Load base locations from API, falling back to local constants
+async function loadMachineBaseLocations() {
+  try {
+    const res = await fetch(`${API_BASE}/machines/base_locations`).then(r => r.json());
+    if (res.isOk && Array.isArray(res.data)) {
+      res.data.forEach(m => {
+        if (m.machine_name && m.lat && m.lng) {
+          MACHINE_BASE_LOCATIONS[m.machine_name] = {
+            lat: parseFloat(m.lat),
+            lng: parseFloat(m.lng),
+            label: m.label || m.machine_name
+          };
+        }
+      });
+    }
+  } catch(e) {
+    console.info('Base locations API unavailable, using local defaults.');
+  }
+}
+
 // ===== GPS - ADMIN FLEET MAP =====
 async function initFleetMap() {
   const container = document.getElementById('fleet-map'); if (!container) return;
+  await loadMachineBaseLocations();
   if (fleetMap) { fleetMap.remove(); fleetMap = null; fleetMarkers = {}; }
   fleetMap = L.map('fleet-map').setView([13.135,78.132],13);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors'}).addTo(fleetMap);
@@ -835,183 +882,162 @@ function stopGpsRefresh()  { if (gpsRefreshTimer) { clearInterval(gpsRefreshTime
 
 // ===== GEOFENCE ALERTS =====
 async function loadGeofenceAlerts() {
-  const container = document.getElementById('geofence-alerts-list'); if (!container) return;
-  try {
-    const res = await fetch(`${API_BASE}/geofence_alerts`).then(r => r.json());
-    if (!res.isOk||!res.data.length) { container.innerHTML='<div style="color:#6b7280;font-size:0.9rem">✅ No active alerts</div>'; return; }
-    container.innerHTML = res.data.map(a =>
-      '<div class="booking-card" style="border-left:4px solid #dc2626;margin-bottom:0.5rem;">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;">'+
-      '<span><b>⚠️ '+a.alert_type+'</b> — '+a.machine_name+'</span>'+
-      '<button onclick="resolveAlert('+a.id+',this)" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:0.25rem 0.75rem;cursor:pointer;font-size:0.8rem">Resolve</button>'+
-      '</div>'+
-      '<div style="font-size:0.82rem;color:#6b7280;margin-top:0.25rem">'+a.message+'</div>'+
-      '<div style="font-size:0.75rem;color:#9ca3af">'+a.created_at+'</div>'+
-      '</div>'
-    ).join('');
-  } catch(e) { container.innerHTML='<div style="color:#6b7280;font-size:0.9rem">✅ No active alerts</div>'; }
-}
-async function resolveAlert(alertId, btn) {
-  btn.disabled = true; btn.textContent = 'Resolving...';
-  try {
-    const res = await fetch(`${API_BASE}/geofence_alerts/${alertId}/resolve`,{method:'POST'}).then(r=>r.json());
-    if (res.isOk) { showToast('Alert resolved','success'); await loadGeofenceAlerts(); }
-    else { throw new Error(res.error); }
-  } catch(e) { showToast('Failed: '+e.message,'error'); btn.disabled=false; btn.textContent='Resolve'; }
+  const container = document.getElementById('geofence-alerts'); if (!container) return;
+  const machines = Object.entries(MACHINE_BASE_LOCATIONS);
+  const alerts = [];
+  machines.forEach(([name, base]) => {
+    const avail = (machineConfigs[name]||{}).availability || 'Available';
+    if (avail === 'Busy') {
+      alerts.push(`<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;margin-bottom:6px;font-size:13px;"><span>🔴</span><b>${name}</b> is currently <b>Busy</b> — out of base at ${base.label}</div>`);
+    } else if (avail === 'Maintenance') {
+      alerts.push(`<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;margin-bottom:6px;font-size:13px;"><span>🟡</span><b>${name}</b> is under <b>Maintenance</b> at ${base.label}</div>`);
+    }
+  });
+  container.innerHTML = alerts.length
+    ? alerts.join('')
+    : '<div style="color:#6b7280;font-size:13px;padding:8px 0;">✅ All machines are at base. No active alerts.</div>';
 }
 
 // ===== ADMIN: MACHINE CONFIG =====
-function onAdminMachineChange() {
-  currentAdminMachine = document.getElementById('admin-machine-selector').value;
-  const icons = {'Grass Cutter':'🌿','Harvester':'🌾','Flip plow':'🔄','Corn Planter':'🌽'};
-  const iconEl = document.getElementById('admin-machine-icon');
-  if (iconEl) iconEl.textContent = icons[currentAdminMachine] || '🚜';
-  const cfg = machineConfigs[currentAdminMachine] || {rate_per_acre:800,cost_per_km:15,petrol_cost_per_km:25,driver_cost:600,availability:'Available'};
-  document.getElementById('cfg-rate').value       = cfg.rate_per_acre;
-  document.getElementById('cfg-cpkm').value       = cfg.cost_per_km;
-  document.getElementById('cfg-petrol-km').value  = cfg.petrol_cost_per_km;
-  document.getElementById('cfg-driver').value     = cfg.driver_cost;
-  const availEl = document.getElementById('cfg-avail');
-  if (availEl) availEl.value = cfg.availability || 'Available';
-  const dispRate   = document.getElementById('disp-rate');       if (dispRate)   dispRate.textContent   = '₹'+cfg.rate_per_acre;
-  const dispCpkm   = document.getElementById('disp-cpkm');       if (dispCpkm)   dispCpkm.textContent   = '₹'+cfg.cost_per_km;
-  const dispPetrol = document.getElementById('disp-petrol-km');  if (dispPetrol) dispPetrol.textContent = '₹'+cfg.petrol_cost_per_km;
-  const dispDriver = document.getElementById('disp-driver');     if (dispDriver) dispDriver.textContent = '₹'+cfg.driver_cost;
-  const badge = document.getElementById('machine-avail-badge');
-  if (badge) {
-    badge.textContent = cfg.availability || 'Available';
-    badge.className   = 'badge status-' + (cfg.availability||'Available').toLowerCase().replace(/\s+/g,'-');
+function renderAdminMachine() {
+  const m = machineConfigs[currentAdminMachine] || { rate_per_acre:800, cost_per_km:15, petrol_cost_per_km:25, driver_cost:600, availability:'Available' };
+  const el = id => document.getElementById(id);
+  if (el('cfg-machine-name'))   el('cfg-machine-name').value   = currentAdminMachine;
+  if (el('cfg-rate'))           el('cfg-rate').value           = m.rate_per_acre;
+  if (el('cfg-cost-km'))        el('cfg-cost-km').value        = m.cost_per_km;
+  if (el('cfg-petrol'))         el('cfg-petrol').value         = m.petrol_cost_per_km;
+  if (el('cfg-driver'))         el('cfg-driver').value         = m.driver_cost;
+  if (el('cfg-availability'))   el('cfg-availability').value   = m.availability;
+  const tabsContainer = document.getElementById('machine-tabs');
+  if (tabsContainer) {
+    tabsContainer.querySelectorAll('.machine-tab-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.machine === currentAdminMachine);
+    });
   }
+}
+
+function switchAdminMachine(machineName) {
+  currentAdminMachine = machineName;
+  renderAdminMachine();
 }
 
 async function saveMachineConfig(e) {
   e.preventDefault();
-  const errEl = document.getElementById('machine-save-error');
-  const btn   = document.getElementById('machine-save-btn');
-  if (errEl) errEl.style.display = 'none';
+  const el = id => document.getElementById(id);
+  const btn = document.getElementById('save-cfg-btn');
   btn.disabled = true; btn.textContent = 'Saving...';
-  const machineName = document.getElementById('admin-machine-selector').value;
-  const rate   = parseFloat(document.getElementById('cfg-rate').value);
-  const cpkm   = parseFloat(document.getElementById('cfg-cpkm').value);
-  const petrol = parseFloat(document.getElementById('cfg-petrol-km').value);
-  const driver = parseFloat(document.getElementById('cfg-driver').value);
-  const avail  = document.getElementById('cfg-avail').value;
-  if (!machineName||isNaN(rate)||isNaN(cpkm)||isNaN(petrol)||isNaN(driver)) {
-    if (errEl) { errEl.textContent='Please fill all fields with valid numbers.'; errEl.style.display='block'; }
-    btn.disabled=false; btn.textContent='Save Configuration'; return;
-  }
-  const existingRecord = allData.find(r => r.type==='machine_config' && r.machine_name===machineName);
-  const configRecord   = { type:'machine_config', machine_name:machineName, rate_per_acre:rate, cost_per_km:cpkm, petrol_cost_per_km:petrol, driver_cost:driver, availability:avail, updated_at:new Date().toISOString() };
+  const machineName = el('cfg-machine-name') ? el('cfg-machine-name').value : currentAdminMachine;
+  const updated = {
+    machine_name:       machineName,
+    rate_per_acre:      parseFloat(el('cfg-rate').value)     || 800,
+    cost_per_km:        parseFloat(el('cfg-cost-km').value)  || 15,
+    petrol_cost_per_km: parseFloat(el('cfg-petrol').value)   || 25,
+    driver_cost:        parseFloat(el('cfg-driver').value)   || 600,
+    availability:       el('cfg-availability').value         || 'Available'
+  };
+  const existing = allData.find(r => r.type==='machine_config' && r.machine_name===machineName);
   let res;
-  if (existingRecord && existingRecord.id) {
-    res = await window.dataSdk.update({ ...existingRecord, ...configRecord });
+  if (existing) {
+    res = await window.dataSdk.update({ ...existing, ...updated });
   } else {
-    res = await window.dataSdk.create(configRecord);
+    res = await window.dataSdk.create({ type:'machine_config', ...updated });
   }
-  btn.disabled=false; btn.textContent='Save Configuration';
+  btn.disabled = false; btn.textContent = 'Save Config';
   if (res.isOk) {
-    showToast(machineName + ' configuration saved! ✅','success');
-    machineConfigs[machineName] = { rate_per_acre:rate, cost_per_km:cpkm, petrol_cost_per_km:petrol, driver_cost:driver, availability:avail };
-    const idx = allData.findIndex(r => r.type==='machine_config' && r.machine_name===machineName);
-    if (idx > -1) { allData[idx] = { ...allData[idx], ...configRecord }; } else { allData.unshift(configRecord); }
-    onAdminMachineChange();
-    fetchAllFromApi();
-    if (typeof refreshFleetMap === 'function') refreshFleetMap();
+    machineConfigs[machineName] = updated;
+    showToast(machineName + ' config saved!', 'success');
+    await refreshFleetMap();
   } else {
-    if (errEl) { errEl.textContent='Save failed: '+(res.error||'Unknown error'); errEl.style.display='block'; }
+    showToast('Save failed: ' + (res.error||'Unknown'), 'error');
   }
-}
-
-async function renderAdminMachine() {
-  onAdminMachineChange();
 }
 
 // ===== ADMIN: RENDER USERS =====
-async function renderAdminUsers() {
-  const listEl = document.getElementById('admin-users-list');
-  if (!listEl) return;
-  listEl.innerHTML = '<div style="color:#6b7280;font-size:0.9rem;padding:1rem">⏳ Loading users...</div>';
-  let users = [];
-  try {
-    const res = await fetch(`${API_BASE}/users`).then(r => r.json());
-    users = (res.isOk && Array.isArray(res.data)) ? res.data : allData.filter(r => r.type==='user');
-  } catch(e) {
-    users = allData.filter(r => r.type==='user');
-  }
+function renderAdminUsers() {
+  const container = document.getElementById('admin-users-list'); if (!container) return;
+  const users = allData.filter(r => r.type === 'user');
   if (!users.length) {
-    listEl.innerHTML = '<div style="text-align:center;padding:56px 16px;color:#9ca3af"><div style="font-size:3rem;margin-bottom:14px">👤</div><p style="font-size:15px">No users registered yet.</p></div>';
+    container.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:2rem;">No users registered yet.</p>';
     return;
   }
-  listEl.innerHTML = users.map(u =>
-    '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:14px 0;border-bottom:1px solid #f0fdf4;">'+
+  container.innerHTML = users.map(u =>
+    '<div class="user-card">'+
     '<div>'+
-    '<div style="font-family:\'Syne\',sans-serif;font-weight:700;font-size:16px;">'+(u.user_name||'-')+'</div>'+
-    '<div class="booking-meta" style="margin-top:4px;">'+(u.user_email||'-')+' &nbsp;|&nbsp; '+(u.user_phone||'-')+'</div>'+
+    '<div style="font-weight:700;font-size:15px;font-family:\'Syne\',sans-serif;">'+u.user_name+'</div>'+
+    '<div style="font-size:13px;color:#6b7280;margin-top:2px;">'+u.user_email+' &nbsp;|&nbsp; 📞 '+u.user_phone+'</div>'+
     '</div>'+
-    '<span class="badge status-'+((u.status||'active').toLowerCase())+'">'+(u.status||'active')+'</span>'+
+    '<button class="btn-danger" onclick="deleteUser(\''+u.id+'\', this)">🗑 Delete</button>'+
     '</div>'
   ).join('');
 }
 
+async function deleteUser(id, btn) {
+  if (!confirm('Delete this user?')) return;
+  btn.disabled = true; btn.textContent = 'Deleting...';
+  const record = allData.find(r => r.type === 'user' && r.id === id);
+  if (!record) { btn.disabled=false; btn.textContent='🗑 Delete'; return; }
+  const res = await window.dataSdk.delete(record);
+  if (res.isOk) { showToast('User deleted.','success'); renderAdminUsers(); }
+  else { showToast('Delete failed: '+(res.error||'Unknown'),'error'); btn.disabled=false; btn.textContent='🗑 Delete'; }
+}
+
 // ===== ADMIN: RENDER BOOKINGS =====
-async function renderAdminBookings() {
-  const listEl = document.getElementById('admin-bookings-list');
-  if (!listEl) return;
-  listEl.innerHTML = '<div style="color:#6b7280;font-size:0.9rem;padding:1rem">⏳ Loading bookings...</div>';
-  let bookings = [];
-  try {
-    const res = await fetch(`${API_BASE}/bookings`).then(r => r.json());
-    bookings = (res.isOk && Array.isArray(res.data)) ? res.data : allData.filter(r => r.type==='booking');
-  } catch(e) {
-    bookings = allData.filter(r => r.type==='booking');
-  }
+function renderAdminBookings() {
+  const container = document.getElementById('admin-bookings-list'); if (!container) return;
+  const bookings = allData.filter(r => r.type === 'booking').sort((a,b) => new Date(b.created_at||0) - new Date(a.created_at||0));
   if (!bookings.length) {
-    listEl.innerHTML = '<div style="text-align:center;padding:56px 16px;color:#9ca3af"><div style="font-size:3rem;margin-bottom:14px">📭</div><p style="font-size:15px">No bookings yet.</p></div>';
+    container.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:2rem;">No bookings yet.</p>';
     return;
   }
-  listEl.innerHTML = bookings.map(b => {
-    const bid = b.id || '';
-    return '<div class="booking-card">'+
-      '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'+
+  container.innerHTML = bookings.map(b => {
+    const status = b.status || 'Pending';
+    return '<div class="booking-card" style="flex-direction:column;align-items:flex-start;">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;width:100%;flex-wrap:wrap;gap:8px;">'+
       '<div>'+
-      '<div style="font-family:\'Syne\',sans-serif;font-weight:700;">'+(b.user_name||'-')+' <span style="font-weight:400;font-size:13px;color:#6b7280;">('+(b.user_email||'-')+')</span></div>'+
-      '<div class="booking-meta" style="margin-top:4px;">🚜 '+(b.machine_name||'-')+' &nbsp;|&nbsp; 🌾 '+(b.crop_type||'-')+' &nbsp;|&nbsp; 📐 '+(b.acres||'-')+' acres &nbsp;|&nbsp; 💰 ₹'+((b.total_cost||0).toLocaleString('en-IN'))+'</div>'+
+      '<span style="font-weight:700;font-family:\'Syne\',sans-serif;">'+(b.machine_name||'Machine')+'</span>'+
+      '<span style="font-size:13px;color:#6b7280;margin-left:10px;">by '+(b.user_name||'User')+'</span>'+
       '</div>'+
-      '<div style="display:flex;align-items:center;gap:8px;">'+
-      '<span class="badge status-'+((b.status||'pending').toLowerCase())+'">'+(b.status||'Pending')+'</span>'+
-      '<select onchange="updateBookingStatus('+bid+',this.value)" class="form-input" style="padding:4px 8px;font-size:12px;width:auto;border-radius:6px;">'+
-      '<option '+(b.status==='Pending'   ?'selected':'')+'>Pending</option>'+
-      '<option '+(b.status==='Confirmed' ?'selected':'')+'>Confirmed</option>'+
-      '<option '+(b.status==='Cancelled' ?'selected':'')+'>Cancelled</option>'+
-      '</select>'+
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'+
+      '<span class="badge status-'+status.toLowerCase()+'">' + status + '</span>'+
+      (status==='Pending' ? '<button class="btn-sm" onclick="updateBookingStatus(\''+b.id+'\',\'Confirmed\')">✅ Confirm</button>' : '')+
+      (status!=='Cancelled' ? '<button class="btn-danger" onclick="updateBookingStatus(\''+b.id+'\',\'Cancelled\')">✕ Cancel</button>' : '')+
       '</div>'+
       '</div>'+
-      '<div style="font-size:12px;color:#9ca3af;margin-top:6px;">'+(b.created_at ? new Date(b.created_at).toLocaleString('en-IN') : '')+'</div>'+
+      '<div class="booking-meta" style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;">'+
+      '<span>🌾 '+(b.crop_type||'-')+'</span>'+
+      '<span>📐 '+(b.acres||'-')+' ac</span>'+
+      '<span>📍 '+(b.distance||'-')+' km</span>'+
+      '<span>💰 ₹'+((b.total_cost||0).toLocaleString('en-IN'))+'</span>'+
+      '<span>📧 '+(b.user_email||'-')+'</span>'+
+      '</div>'+
+      '<div style="font-size:12px;color:#9ca3af;margin-top:4px;">'+(b.created_at ? new Date(b.created_at).toLocaleString('en-IN') : '')+'</div>'+
       '</div>';
   }).join('');
 }
 
-async function updateBookingStatus(bookingId, newStatus) {
-  if (!bookingId) return;
-  const record  = allData.find(r => r.id == bookingId && r.type === 'booking');
-  const updated = record ? { ...record, status: newStatus } : { id: bookingId, type: 'booking', status: newStatus };
-  const res = await window.dataSdk.update(updated);
-  if (res.isOk) { showToast('Status updated to ' + newStatus,'success'); await renderAdminBookings(); }
-  else { showToast('Status update failed','error'); }
+async function updateBookingStatus(id, newStatus) {
+  const record = allData.find(r => r.type==='booking' && r.id===id);
+  if (!record) return;
+  const res = await window.dataSdk.update({ ...record, status: newStatus });
+  if (res.isOk) {
+    showToast('Booking ' + newStatus.toLowerCase() + '.', 'success');
+    renderAdminBookings();
+  } else {
+    showToast('Update failed: ' + (res.error||'Unknown'), 'error');
+  }
 }
 
 // ===== ADMIN TAB SWITCHER =====
 function switchAdminTab(tab) {
-  ['machine','users','bookings','tracker'].forEach(t => {
-    const p = document.getElementById('adm-'+t);
-    const b = document.getElementById('adm-tab-'+t);
-    if (p) p.style.display = (t===tab) ? '' : 'none';
-    if (b) b.classList.toggle('active', t===tab);
+  ['machines','users','bookings','fleet'].forEach(t => {
+    const el = document.getElementById('admin-tab-' + t);
+    const btn = document.getElementById('admin-btn-' + t);
+    if (el) el.style.display = (t === tab) ? '' : 'none';
+    if (btn) btn.classList.toggle('active', t === tab);
   });
-  if (tab==='machine')  renderAdminMachine();
-  if (tab==='users')    renderAdminUsers();
-  if (tab==='bookings') renderAdminBookings();
-  if (tab==='tracker')  setTimeout(initFleetMap, 200);
+  if (tab === 'fleet') {
+    setTimeout(() => { if (fleetMap) fleetMap.invalidateSize(); }, 100);
+  }
 }
 
 // ===== USER PROFILE =====
@@ -1034,7 +1060,7 @@ function showUserProfile() {
     '<form id="profile-form" onsubmit="saveUserProfile(event)">'+
     '<div style="margin-bottom:1rem;">'+
     '<label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:4px;color:#374151;">Full Name</label>'+
-    '<input id="prof-name" class="form-input" value="'+(currentUser.user_name||'')+'">'+
+    '<input id="prof-name" class="form-input" value="'+(currentUser.user_name||'')+'" required>'+
     '</div>'+
     '<div style="margin-bottom:1rem;">'+
     '<label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:4px;color:#374151;">Email</label>'+
@@ -1042,15 +1068,15 @@ function showUserProfile() {
     '</div>'+
     '<div style="margin-bottom:1rem;">'+
     '<label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:4px;color:#374151;">Phone</label>'+
-    '<input id="prof-phone" class="form-input" value="'+(currentUser.user_phone||'')+'">'+
+    '<input id="prof-phone" class="form-input" value="'+(currentUser.user_phone||'')+'" required>'+
     '</div>'+
     '<div style="margin-bottom:1rem;">'+
     '<label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:4px;color:#374151;">Address / Village</label>'+
-    '<input id="prof-address" class="form-input" placeholder="Your village or address" value="'+(currentUser.address||'')+'">'+
+    '<input id="prof-address" class="form-input" placeholder="Your village or address" value="'+(currentUser.address||'')+'" >'+
     '</div>'+
     '<div style="margin-bottom:1.25rem;">'+
     '<label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:4px;color:#374151;">New Password <span style="font-weight:400;color:#9ca3af;">(leave blank to keep current)</span></label>'+
-    '<input id="prof-pass" class="form-input" type="password" placeholder="New password">'+
+    '<input id="prof-pass" class="form-input" type="password" placeholder="New password" autocomplete="new-password">'+
     '</div>'+
     '<button type="submit" id="prof-save-btn" class="btn-primary" style="width:100%;">✅ Save Changes</button>'+
     '</form>'+
