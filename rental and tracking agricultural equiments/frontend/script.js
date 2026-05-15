@@ -429,8 +429,7 @@ function calculateCost(e) {
   const driver_cost  = config.driver_cost;
   const total_cost   = machine_cost + travel_cost + driver_cost;
   const estHours     = Math.ceil(acres * 1.5);
-  const isGrassCutter  = machineType === 'Grass Cutter';
-  const isUnavailable  = isGrassCutter && config.availability !== 'Available';
+  const isUnavailable  = config.availability && config.availability !== 'Available';
   const icons = { 'Grass Cutter':'🌿','Harvester':'🌾','Flip plow':'🔄','Corn Planter':'🌽','other':'🚜' };
   const iconEl = document.getElementById('res-machine-icon'); if (iconEl) iconEl.textContent = icons[machineType]||'🚜';
   document.title = machineType + ' - AgroBook';
@@ -451,10 +450,10 @@ function calculateCost(e) {
   if (isUnavailable) {
     bookBtn.style.display = 'none'; if (warningEl) warningEl.style.display = 'block';
     if (statusEl&&statusTextEl) { statusEl.style.display='block'; statusTextEl.textContent=config.availability; }
-    showToast('Grass Cutter is currently ' + config.availability.toLowerCase() + '. Cannot book.', 'error');
+    showToast(machineType + ' is currently ' + config.availability.toLowerCase() + '. Cannot book.', 'error');
   } else {
     bookBtn.style.display = 'block'; if (warningEl) warningEl.style.display = 'none';
-    if (statusEl&&statusTextEl&&isGrassCutter) { statusEl.style.display='block'; statusTextEl.textContent='Available'; }
+    if (statusEl&&statusTextEl) { statusEl.style.display='block'; statusTextEl.textContent='Available'; }
   }
   pendingBookingData = { 
     machine_name:machineType, crop_type:crop, acres, distance:dist, 
