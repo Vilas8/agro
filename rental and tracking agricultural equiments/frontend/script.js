@@ -768,8 +768,7 @@ async function showBookingMap(machineName, bookingId) {
     }
   } catch(e) {}
   
-  const totalPoints = denseRoute.length;
-  trackingIndex = Math.floor(progressPct * (totalPoints - 1));
+  trackingIndex = Math.floor(progressPct * (denseRoute.length - 1));
 
   const plannedLatLngs = denseRoute.map(p => [p.lat, p.lng]);
   L.polyline(plannedLatLngs, { color:'#d1d5db', weight:4, opacity:0.6, dashArray:'8,6' }).addTo(trackingMap);
