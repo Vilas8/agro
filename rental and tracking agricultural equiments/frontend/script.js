@@ -961,13 +961,21 @@ async function refreshFleetMap() {
       const confirmedAt = new Date(tsValidStr).getTime();
       const elapsed = Date.now() - confirmedAt;
       progressPct = Math.min(1, Math.max(0, elapsed / tripWindowMs));
-      // Simulate SE direction movement by booking distance
-      const headingRad = 135 * Math.PI / 180; // SE
-      const movedKm = distKm * progressPct;
-      const deltaLat = (movedKm / 111) * Math.cos(headingRad);
-      const deltaLng = (movedKm / (111 * Math.cos(base.lat * Math.PI / 180))) * Math.sin(headingRad);
-      lat = base.lat + deltaLat;
-      lng = base.lng + deltaLng;
+      // Interpolate position directly between base and field location
+      let destLat = 12.9716; // default fallback (Bangalore)
+      let destLng = 77.5946;
+      if (activeBooking.field_lat && activeBooking.field_lng) {
+        destLat = parseFloat(activeBooking.field_lat);
+        destLng = parseFloat(activeBooking.field_lng);
+      } else {
+        // Fallback: estimate destination along a realistic land direction (West towards Bangalore)
+        const capDist = Math.min(distKm, 80); // cap to 80km to avoid going off map
+        const headingRad = 260 * Math.PI / 180; // WSW
+        destLat = base.lat + ((capDist / 111) * Math.cos(headingRad));
+        destLng = base.lng + ((capDist / (111 * Math.cos(base.lat * Math.PI / 180))) * Math.sin(headingRad));
+      }
+      lat = base.lat + (destLat - base.lat) * progressPct;
+      lng = base.lng + (destLng - base.lng) * progressPct;
     }
 
     // Inject CSS for fleet pulse animation if not already present
