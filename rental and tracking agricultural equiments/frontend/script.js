@@ -493,6 +493,47 @@ async function handleAutoGPS(machineName) {
   }
 }
 
+// FIX 2.5: autoFillDistancefromAddress - Address based distance
+async function autoFillDistancefromAddress() {
+  const district = document.getElementById('select-district').value;
+  const village = document.getElementById('select-village').value;
+  const machineName = document.getElementById('machine-type').value;
+
+  if (!district || !village) { showToast('Please select District and Village first', 'error'); return; }
+  if (!machineName) { showToast('Select a machine type first', 'error'); return; }
+
+  const btn = document.querySelector('[onclick*="autoFillDistancefromAddress"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Calculating...'; }
+
+  try {
+    const query = encodeURIComponent(`${village}, ${district}, Karnataka, India`);
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`);
+    const data = await res.json();
+    
+    if (data && data.length > 0) {
+      const userLat = parseFloat(data[0].lat);
+      const userLng = parseFloat(data[0].lon);
+      
+      const base = MACHINE_BASE_LOCATIONS[machineName] || { lat:13.135, lng:78.132 };
+      let distKm;
+      try {
+        const routeData = await fetchOSRMRoute(base.lat, base.lng, userLat, userLng);
+        distKm = routeData ? routeData.distanceKm : (haversineKm(base.lat, base.lng, userLat, userLng) * 1.3).toFixed(1);
+      } catch(e) {
+        distKm = (haversineKm(base.lat, base.lng, userLat, userLng) * 1.3).toFixed(1);
+      }
+      document.getElementById('distance-km').value = distKm;
+      showToast('Distance calculated from ' + village + ': ' + distKm + ' km 📍', 'success');
+    } else {
+      showToast('Address not found. Please try Auto GPS.', 'error');
+    }
+  } catch(e) {
+    showToast('Failed to calculate distance from address', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '📍 Auto Dist (Address)'; }
+  }
+}
+
 async function confirmBooking() {
   if (!currentUser||!currentUser.user_name) { return showToast('Please login first.','error'); }
   if (!pendingBookingData)                  { return showToast('Please calculate cost first.','error'); }
@@ -714,7 +755,21 @@ async function showBookingMap(machineName, bookingId) {
 
   const denseRoute = interpolateRoute(routeCoords);
   trackingRoute = denseRoute;
-  trackingIndex = 0;
+  
+  // Calculate initial tracking index based on elapsed time since booking
+  let progressPct = 0;
+  try {
+    const booking = allData.find(r => r.type === 'booking' && String(r.id) === String(bookingId));
+    if (booking && (booking.status || '').toLowerCase() === 'confirmed') {
+      const tripWindowMs = 4 * 60 * 60 * 1000; // 4 hours
+      const createdAt = new Date(booking.created_at || Date.now()).getTime();
+      const elapsed = Date.now() - createdAt;
+      progressPct = Math.min(1, Math.max(0, elapsed / tripWindowMs));
+    }
+  } catch(e) {}
+  
+  const totalPoints = denseRoute.length;
+  trackingIndex = Math.floor(progressPct * (totalPoints - 1));
 
   const plannedLatLngs = denseRoute.map(p => [p.lat, p.lng]);
   L.polyline(plannedLatLngs, { color:'#d1d5db', weight:4, opacity:0.6, dashArray:'8,6' }).addTo(trackingMap);
@@ -859,6 +914,7 @@ async function refreshFleetMap() {
   const confirmedBookings = allData.filter(r => r.type === 'booking' && (r.status || '').toLowerCase() === 'confirmed');
 
   const machinesToShow = Object.keys(MACHINE_BASE_LOCATIONS);
+  const activeMovements = [];
   machinesToShow.forEach(machineName => {
     const base  = MACHINE_BASE_LOCATIONS[machineName];
     const avail = (machineConfigs[machineName]||{}).availability || 'Available';
@@ -931,7 +987,33 @@ async function refreshFleetMap() {
     } else {
       fleetMarkers[machineName] = L.marker([lat,lng],{icon}).addTo(fleetMap).bindPopup(popupLines);
     }
+    
+    if (activeBooking) {
+      const isReached = progressPct >= 1;
+      const statusText = isReached ? '<span style="color:#16a34a;font-weight:700;">✅ Reached Destination</span>' : '<span style="color:#dc2626;font-weight:700;">🔴 En Route ('+Math.round(progressPct*100)+'%)</span>';
+      activeMovements.push(
+        `<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+          <div>
+            <div style="font-weight:700;font-size:15px;color:#1f2937;">${emoji} ${machineName}</div>
+            <div style="font-size:13px;color:#6b7280;margin-top:2px;">Booked by: <b>${bookedBy}</b></div>
+          </div>
+          <div style="text-align:right;font-size:13px;">
+            ${statusText}
+            <div style="color:#9ca3af;margin-top:2px;">📍 ${lat.toFixed(4)}, ${lng.toFixed(4)}</div>
+          </div>
+        </div>`
+      );
+    }
   });
+
+  const movementsListEl = document.getElementById('fleet-movements-list');
+  if (movementsListEl) {
+    if (activeMovements.length > 0) {
+      movementsListEl.innerHTML = activeMovements.join('');
+    } else {
+      movementsListEl.innerHTML = '<div style="color:#6b7280;font-size:13px;">No active movements right now.</div>';
+    }
+  }
 }
 
 function startGpsRefresh() { stopGpsRefresh(); gpsRefreshTimer = setInterval(async()=>{ await refreshFleetMap(); await loadGeofenceAlerts(); },30000); }
@@ -965,6 +1047,12 @@ function renderAdminMachine() {
   if (el('cfg-petrol'))         el('cfg-petrol').value         = m.petrol_cost_per_km;
   if (el('cfg-driver'))         el('cfg-driver').value         = m.driver_cost;
   if (el('cfg-availability'))   el('cfg-availability').value   = m.availability;
+  
+  if (el('disp-rate'))          el('disp-rate').textContent          = '₹' + (m.rate_per_acre || 800);
+  if (el('disp-cpkm'))          el('disp-cpkm').textContent          = '₹' + (m.cost_per_km || 15);
+  if (el('disp-petrol-km'))     el('disp-petrol-km').textContent     = '₹' + (m.petrol_cost_per_km || 25);
+  if (el('disp-driver'))        el('disp-driver').textContent        = '₹' + (m.driver_cost || 600);
+
   const tabsContainer = document.getElementById('machine-tabs');
   if (tabsContainer) {
     tabsContainer.querySelectorAll('.machine-tab-btn').forEach(b => {
@@ -1031,7 +1119,7 @@ function renderAdminUsers() {
 async function deleteUser(id, btn) {
   if (!confirm('Delete this user?')) return;
   btn.disabled = true; btn.textContent = 'Deleting...';
-  const record = allData.find(r => r.type === 'user' && r.id === id);
+  const record = allData.find(r => r.type === 'user' && String(r.id) === String(id));
   if (!record) { btn.disabled=false; btn.textContent='🗑 Delete'; return; }
   const res = await window.dataSdk.delete(record);
   if (res.isOk) { showToast('User deleted.','success'); renderAdminUsers(); }
@@ -1073,7 +1161,7 @@ function renderAdminBookings() {
 }
 
 async function updateBookingStatus(id, newStatus) {
-  const record = allData.find(r => r.type==='booking' && r.id===id);
+  const record = allData.find(r => r.type==='booking' && String(r.id)===String(id));
   if (!record) return;
   const res = await window.dataSdk.update({ ...record, status: newStatus });
   if (res.isOk) {

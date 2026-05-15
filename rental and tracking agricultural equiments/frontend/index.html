@@ -389,6 +389,7 @@
       </div>
       <div style="display:flex;align-items:center;gap:14px;">
         <span id="dash-username" style="font-size:14px;color:#4b5563;font-weight:500;"></span>
+        <button onclick="switchUserTab('profile')" class="btn-outline" style="color:var(--green-mid);border-color:var(--green-mid);padding:8px 18px;font-size:13px;">👤 Profile</button>
         <button onclick="logout()" class="btn-outline" style="color:#ef4444;border-color:#fca5a5;padding:8px 18px;font-size:13px;">Logout</button>
       </div>
     </div>
@@ -397,7 +398,6 @@
     <div style="display:flex;gap:8px;margin-bottom:28px;flex-wrap:wrap;">
       <button class="tab-btn active" id="udash-tab-search"   onclick="switchUserTab('search')">🔍 Search &amp; Book</button>
       <button class="tab-btn"        id="udash-tab-bookings" onclick="switchUserTab('bookings')">📋 My Bookings</button>
-      <button class="tab-btn"        id="udash-tab-profile"  onclick="switchUserTab('profile')">👤 My Profile</button>
     </div>
 
     <!-- Search & Book -->
@@ -453,6 +453,7 @@
               <label class="form-label" for="distance-km">
                 Distance from Machine (km)
                 <button type="button" class="btn-gps" onclick="autoFillDistanceFromGPS()" title="Auto-detect road distance from your location to the selected machine base" style="margin-left:8px;font-size:11px;padding:4px 10px;">📡 Auto GPS</button>
+                <button type="button" class="btn-gps" onclick="autoFillDistancefromAddress()" title="Auto-calculate distance from the selected address" style="margin-left:4px;font-size:11px;padding:4px 10px;background:#eef2ff;color:#4f46e5;border-color:#c7d2fe;">📍 Auto Dist (Address)</button>
               </label>
               <input class="form-input" type="number" id="distance-km" min="1" step="0.5" placeholder="e.g. 10" required>
             </div>
@@ -661,6 +662,13 @@
           </h3>
           <!-- ID must be geofence-alerts to match script.js -->
           <div id="geofence-alerts" style="clear:both;">Loading alerts...</div>
+        </div>
+        
+        <div style="margin-top:24px;">
+          <h3 style="font-family:'Syne',sans-serif;font-weight:700;font-size:18px;margin-bottom:12px;color:var(--green-deep);">Active Fleet Movements</h3>
+          <div id="fleet-movements-list" style="display:flex;flex-direction:column;gap:12px;">
+            <div style="color:#6b7280;font-size:13px;">Loading fleet movements...</div>
+          </div>
         </div>
       </div>
     </div>
