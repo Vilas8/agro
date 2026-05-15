@@ -790,7 +790,13 @@ async function showBookingMap(machineName, bookingId) {
     html: '<div style="font-size:2rem;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.4));">🚜</div>',
     iconSize:[36,36], iconAnchor:[18,18], className:''
   });
-  trackingMarker = L.marker([base.lat, base.lng], { icon: machineIcon, zIndexOffset: 1000 }).addTo(trackingMap);
+  const startPos = denseRoute[trackingIndex];
+  trackingMarker = L.marker([startPos.lat, startPos.lng], { icon: machineIcon, zIndexOffset: 1000 }).addTo(trackingMap);
+  
+  if (trackingIndex > 0) {
+    const travelledPath = denseRoute.slice(0, trackingIndex + 1).map(p => [p.lat, p.lng]);
+    travelledPolyline.setLatLngs(travelledPath);
+  }
 
   const bounds = L.latLngBounds(plannedLatLngs);
   trackingMap.fitBounds(bounds, { padding:[30,30] });
@@ -954,8 +960,11 @@ async function refreshFleetMap() {
       document.head.appendChild(style);
     }
 
+    const isReached = progressPct >= 1;
     const enRouteBadge = isEnRoute
-      ? '<div style="font-size:9px;color:#dc2626;font-weight:700;animation:fleetPulse 1.2s infinite;margin-top:1px;">🔴 En Route</div>'
+      ? (isReached 
+         ? '<div style="font-size:10px;color:#16a34a;font-weight:800;margin-top:1px;background:#fff;padding:2px 6px;border-radius:10px;border:1px solid #16a34a;box-shadow:0 2px 4px rgba(0,0,0,0.2);">✅ Reached</div>'
+         : '<div style="font-size:9px;color:#dc2626;font-weight:700;animation:fleetPulse 1.2s infinite;margin-top:1px;">🔴 En Route</div>')
       : '';
 
     const iconHtml =
@@ -972,7 +981,9 @@ async function refreshFleetMap() {
     const icon  = L.divIcon({html:iconHtml,iconSize:[150,64],iconAnchor:[75,64],className:''});
     const popupLines = isEnRoute
       ? '<b>'+emoji+' '+machineName+'</b><br>'+
-        '<span style="color:#dc2626;font-weight:600;">🔴 En Route ('+(Math.round(progressPct*100))+'% complete)</span><br>'+
+        (isReached 
+          ? '<span style="color:#16a34a;font-weight:600;">✅ Reached Destination</span><br>'
+          : '<span style="color:#dc2626;font-weight:600;">🔴 En Route ('+(Math.round(progressPct*100))+'% complete)</span><br>') +
         '👤 Booked by: <b>'+bookedBy+'</b><br>'+
         '📍 Live: '+lat.toFixed(4)+', '+lng.toFixed(4)
       : '<b>'+emoji+' '+machineName+'</b><br>'+
@@ -988,7 +999,6 @@ async function refreshFleetMap() {
     }
     
     if (activeBooking) {
-      const isReached = progressPct >= 1;
       const statusText = isReached ? '<span style="color:#16a34a;font-weight:700;">✅ Reached Destination</span>' : '<span style="color:#dc2626;font-weight:700;">🔴 En Route ('+Math.round(progressPct*100)+'%)</span>';
       activeMovements.push(
         `<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
@@ -1052,11 +1062,9 @@ function renderAdminMachine() {
   if (el('disp-petrol-km'))     el('disp-petrol-km').textContent     = '₹' + (m.petrol_cost_per_km || 25);
   if (el('disp-driver'))        el('disp-driver').textContent        = '₹' + (m.driver_cost || 600);
 
-  const tabsContainer = document.getElementById('machine-tabs');
-  if (tabsContainer) {
-    tabsContainer.querySelectorAll('.machine-tab-btn').forEach(b => {
-      b.classList.toggle('active', b.dataset.machine === currentAdminMachine);
-    });
+  const dropdown = document.getElementById('machine-select-dropdown');
+  if (dropdown) {
+    dropdown.value = currentAdminMachine;
   }
 }
 

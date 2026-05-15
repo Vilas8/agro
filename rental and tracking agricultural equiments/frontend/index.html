@@ -571,15 +571,17 @@
             <span style="font-size:2.2rem;">🌿</span>
             <div style="flex:1;">
               <!-- machine-tabs for script.js switchAdminMachine -->
-              <div id="machine-tabs" style="display:flex;flex-wrap:wrap;gap:6px;">
-                <button class="machine-tab-btn active" data-machine="Grass Cutter"   onclick="switchAdminMachine('Grass Cutter')">🌿 Grass Cutter</button>
-                <button class="machine-tab-btn"        data-machine="Harvester"      onclick="switchAdminMachine('Harvester')">🌾 Harvester</button>
-                <button class="machine-tab-btn"        data-machine="Flip plow"      onclick="switchAdminMachine('Flip plow')">🔄 Flip Plow</button>
-                <button class="machine-tab-btn"        data-machine="Corn Planter"   onclick="switchAdminMachine('Corn Planter')">🌽 Corn Planter</button>
-                <button class="machine-tab-btn"        data-machine="Rotavator"      onclick="switchAdminMachine('Rotavator')">⚙️ Rotavator</button>
-                <button class="machine-tab-btn"        data-machine="Paddy Planter"  onclick="switchAdminMachine('Paddy Planter')">🌱 Paddy Planter</button>
-                <button class="machine-tab-btn"        data-machine="Sprayer"        onclick="switchAdminMachine('Sprayer')">💧 Sprayer</button>
-                <button class="machine-tab-btn"        data-machine="Cultivator"     onclick="switchAdminMachine('Cultivator')">🚜 Cultivator</button>
+              <div id="machine-tabs" style="display:flex;flex-wrap:wrap;gap:6px;width:100%;">
+                <select id="machine-select-dropdown" class="form-input" style="width:100%;font-size:16px;font-weight:600;" onchange="switchAdminMachine(this.value)">
+                  <option value="Grass Cutter">🌿 Grass Cutter</option>
+                  <option value="Harvester">🌾 Harvester</option>
+                  <option value="Flip plow">🔄 Flip Plow</option>
+                  <option value="Corn Planter">🌽 Corn Planter</option>
+                  <option value="Rotavator">⚙️ Rotavator</option>
+                  <option value="Paddy Planter">🌱 Paddy Planter</option>
+                  <option value="Sprayer">💧 Sprayer</option>
+                  <option value="Cultivator">🚜 Cultivator</option>
+                </select>
               </div>
             </div>
           </div>
