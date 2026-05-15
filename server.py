@@ -6,8 +6,13 @@ import os
 import pymysql
 import pymysql.cursors
 
-app = Flask(__name__)
+FRONTEND_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'rental and tracking agricultural equiments', 'frontend')
+app = Flask(__name__, static_folder=FRONTEND_FOLDER, static_url_path='')
 CORS(app)
+
+@app.route('/')
+def serve_index():
+    return app.send_static_file('index.html')
 
 # ---------------------------------------------------------------------------
 # STATIC BASE LOCATIONS — one dummy GPS coordinate per machine near Kolar
