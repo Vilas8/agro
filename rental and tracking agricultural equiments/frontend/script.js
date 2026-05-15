@@ -756,14 +756,15 @@ async function showBookingMap(machineName, bookingId) {
   const denseRoute = interpolateRoute(routeCoords);
   trackingRoute = denseRoute;
   
-  // Calculate initial tracking index based on elapsed time since booking
+  // Calculate initial tracking index based on elapsed time since confirmation
   let progressPct = 0;
   try {
     const booking = allData.find(r => r.type === 'booking' && String(r.id) === String(bookingId));
     if (booking && (booking.status || '').toLowerCase() === 'confirmed') {
-      const tripWindowMs = 4 * 60 * 60 * 1000; // 4 hours
-      const createdAt = new Date(booking.created_at || Date.now()).getTime();
-      const elapsed = Date.now() - createdAt;
+      const confirmedAt = new Date(booking.updated_at || booking.created_at || Date.now()).getTime();
+      const elapsed = Date.now() - confirmedAt;
+      const speedKmh = 30; // realistic simulation speed 10-40kmph
+      const tripWindowMs = (parseFloat(totalDistKm) / speedKmh) * 60 * 60 * 1000 || 4 * 60 * 60 * 1000;
       progressPct = Math.min(1, Math.max(0, elapsed / tripWindowMs));
     }
   } catch(e) {}
@@ -937,13 +938,14 @@ async function refreshFleetMap() {
     if (activeBooking) {
       isEnRoute = true;
       bookedBy = activeBooking.user_name || '';
-      // Interpolate position: assume 4h trip window from created_at
-      const tripWindowMs = 4 * 60 * 60 * 1000;
-      const createdAt = new Date(activeBooking.created_at || Date.now()).getTime();
-      const elapsed = Date.now() - createdAt;
+      // Interpolate position based on distance and average speed from confirmation time
+      const distKm = parseFloat(activeBooking.distance) || 10;
+      const speedKmh = 30; // 30 km/h average
+      const tripWindowMs = (distKm / speedKmh) * 60 * 60 * 1000 || 4 * 60 * 60 * 1000;
+      const confirmedAt = new Date(activeBooking.updated_at || activeBooking.created_at || Date.now()).getTime();
+      const elapsed = Date.now() - confirmedAt;
       progressPct = Math.min(1, Math.max(0, elapsed / tripWindowMs));
       // Simulate SE direction movement by booking distance
-      const distKm = parseFloat(activeBooking.distance) || 10;
       const headingRad = 135 * Math.PI / 180; // SE
       const movedKm = distKm * progressPct;
       const deltaLat = (movedKm / 111) * Math.cos(headingRad);
