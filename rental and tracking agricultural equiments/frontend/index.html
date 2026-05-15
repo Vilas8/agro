@@ -421,7 +421,7 @@
             </div>
             <div style="margin-bottom:18px;">
               <label class="form-label" for="machine-type">Machine Type</label>
-              <select class="form-input" id="machine-type" required>
+              <select class="form-input" id="machine-type" required onchange="updateCropOptions()">
                 <option value="">-- Select Machine --</option>
                 <option value="Grass Cutter">Grass Cutter</option>
                 <option value="Harvester">Harvester</option>
@@ -436,13 +436,7 @@
             <div style="margin-bottom:18px;">
               <label class="form-label" for="crop-type">Crop Type</label>
               <select class="form-input" id="crop-type" required>
-                <option value="">-- Select Crop --</option>
-                <option value="Paddy">Paddy</option>
-                <option value="Ragi">Ragi</option>
-                <option value="Wheat">Wheat</option>
-                <option value="Corn">Corn</option>
-                <option value="Sugarcane">Sugarcane</option>
-                <option value="Other">Other</option>
+                <option value="">-- Select Machine First --</option>
               </select>
             </div>
             <div style="margin-bottom:18px;">

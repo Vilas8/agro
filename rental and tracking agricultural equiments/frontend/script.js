@@ -103,6 +103,42 @@ function updateVillageOptions() {
   });
 }
 
+const MACHINE_CROP_MAP = {
+  'Grass Cutter': ['Weed clearance', 'Orchard grass', 'Forage crops', 'Lawn', 'Other'],
+  'Harvester': ['Paddy', 'Wheat', 'Corn', 'Ragi', 'Sugarcane', 'Soybean', 'Other'],
+  'Flip plow': ['Sugarcane', 'Cotton', 'Root crops', 'Potato', 'Other'],
+  'Corn Planter': ['Corn', 'Maize', 'Soybean', 'Sunflower', 'Other'],
+  'Rotavator': ['Paddy', 'Ragi', 'Wheat', 'Cotton', 'Maize', 'Vegetables', 'Other'],
+  'Paddy Planter': ['Paddy', 'Other'],
+  'Sprayer': ['Vegetables', 'Cotton', 'Orchard', 'Paddy', 'Ragi', 'Wheat', 'Other'],
+  'Cultivator': ['Wheat', 'Ragi', 'Corn', 'Cotton', 'Sugarcane', 'Other']
+};
+
+function updateCropOptions() {
+  const machineSel = document.getElementById('machine-type');
+  const cropSel = document.getElementById('crop-type');
+  if (!machineSel || !cropSel) return;
+  
+  const currentCrop = cropSel.value;
+  const machine = machineSel.value;
+  
+  if (!machine) {
+    cropSel.innerHTML = '<option value="">-- Select Machine First --</option>';
+    return;
+  }
+  
+  cropSel.innerHTML = '<option value="">-- Select Crop --</option>';
+  const crops = MACHINE_CROP_MAP[machine] || ['Paddy', 'Ragi', 'Wheat', 'Corn', 'Sugarcane', 'Other'];
+  
+  crops.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c;
+    opt.textContent = c;
+    if (c === currentCrop) opt.selected = true;
+    cropSel.appendChild(opt);
+  });
+}
+
 // ===== CORE: fetch from DB and rebuild local cache =====
 async function fetchAllFromApi() {
   try {
