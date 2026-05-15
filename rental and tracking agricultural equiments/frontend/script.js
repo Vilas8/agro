@@ -456,7 +456,12 @@ function calculateCost(e) {
     bookBtn.style.display = 'block'; if (warningEl) warningEl.style.display = 'none';
     if (statusEl&&statusTextEl&&isGrassCutter) { statusEl.style.display='block'; statusTextEl.textContent='Available'; }
   }
-  pendingBookingData = { machine_name:machineType, crop_type:crop, acres, distance:dist, machine_cost, travel_cost, driver_cost, total_cost, estimated_hours:estHours };
+  pendingBookingData = { 
+    machine_name:machineType, crop_type:crop, acres, distance:dist, 
+    machine_cost, travel_cost, driver_cost, total_cost, estimated_hours:estHours,
+    field_lat: window.currentBookingLat || null,
+    field_lng: window.currentBookingLng || null
+  };
 }
 
 // FIX 2: autoFillDistanceFromGPS — OSRM road distance from user GPS to machine base
@@ -474,6 +479,8 @@ async function handleAutoGPS(machineName) {
       navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000 })
     );
     const userLat = pos.coords.latitude, userLng = pos.coords.longitude;
+    window.currentBookingLat = userLat;
+    window.currentBookingLng = userLng;
     if (!machineName) { showToast('Select a machine type first','error'); return; }
     const base = MACHINE_BASE_LOCATIONS[machineName] || { lat:13.135, lng:78.132 };
     // Try OSRM road distance first, fallback to haversine * 1.3
@@ -513,6 +520,8 @@ async function autoFillDistancefromAddress() {
     if (data && data.length > 0) {
       const userLat = parseFloat(data[0].lat);
       const userLng = parseFloat(data[0].lon);
+      window.currentBookingLat = userLat;
+      window.currentBookingLng = userLng;
       
       const base = MACHINE_BASE_LOCATIONS[machineName] || { lat:13.135, lng:78.132 };
       let distKm;
@@ -717,18 +726,22 @@ async function showBookingMap(machineName, bookingId) {
   const infoBar = document.getElementById('gps-info-bar');
   infoBar.innerHTML = '⏳ Fetching route from <b>' + base.label + '</b> to your location...';
 
-  let userLat = 13.0827, userLng = 80.2707;
-  try {
-    userLat = await new Promise((res, rej) => {
-      navigator.geolocation.getCurrentPosition(p => res(p.coords.latitude), rej, { timeout: 5000 });
-    });
-    userLng = await new Promise((res, rej) => {
-      navigator.geolocation.getCurrentPosition(p => res(p.coords.longitude), rej, { timeout: 5000 });
-    });
-  } catch(e) {
-    userLat = 12.9716;
-    userLng = 77.5946;
-    infoBar.innerHTML += '<br><small style="color:#d97706;">⚠️ Location access denied — using Bengaluru as demo destination.</small>';
+  const booking = allData.find(r => r.type === 'booking' && String(r.id) === String(bookingId));
+  
+  let userLat = booking && booking.field_lat ? parseFloat(booking.field_lat) : null;
+  let userLng = booking && booking.field_lng ? parseFloat(booking.field_lng) : null;
+
+  if (!userLat || !userLng) {
+    try {
+      userLat = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(p => res(p.coords.latitude), rej, { timeout: 4000 }));
+      userLng = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(p => res(p.coords.longitude), rej, { timeout: 4000 }));
+    } catch(e) {
+      // Simulate destination based on the booking's distance roughly in a SE direction
+      const fallbackDist = parseFloat(booking ? booking.distance : 15);
+      userLat = base.lat - (fallbackDist / 111) * 0.7;
+      userLng = base.lng + (fallbackDist / 111) * 0.7;
+      infoBar.innerHTML += '<br><small style="color:#d97706;">⚠️ Location not stored — using simulated field destination.</small>';
+    }
   }
 
   const midLat = (base.lat + userLat) / 2;
@@ -759,9 +772,10 @@ async function showBookingMap(machineName, bookingId) {
   // Calculate initial tracking index based on elapsed time since confirmation
   let progressPct = 0;
   try {
-    const booking = allData.find(r => r.type === 'booking' && String(r.id) === String(bookingId));
     if (booking && (booking.status || '').toLowerCase() === 'confirmed') {
-      const confirmedAt = new Date(booking.updated_at || booking.created_at || Date.now()).getTime();
+      const tsStr = booking.updated_at || booking.created_at;
+      const tsValidStr = tsStr ? (tsStr.endsWith('Z') ? tsStr : tsStr + 'Z') : new Date().toISOString();
+      const confirmedAt = new Date(tsValidStr).getTime();
       const elapsed = Date.now() - confirmedAt;
       const speedKmh = 30; // realistic simulation speed 10-40kmph
       const tripWindowMs = (parseFloat(totalDistKm) / speedKmh) * 60 * 60 * 1000 || 4 * 60 * 60 * 1000;
@@ -942,7 +956,9 @@ async function refreshFleetMap() {
       const distKm = parseFloat(activeBooking.distance) || 10;
       const speedKmh = 30; // 30 km/h average
       const tripWindowMs = (distKm / speedKmh) * 60 * 60 * 1000 || 4 * 60 * 60 * 1000;
-      const confirmedAt = new Date(activeBooking.updated_at || activeBooking.created_at || Date.now()).getTime();
+      const tsStr = activeBooking.updated_at || activeBooking.created_at;
+      const tsValidStr = tsStr ? (tsStr.endsWith('Z') ? tsStr : tsStr + 'Z') : new Date().toISOString();
+      const confirmedAt = new Date(tsValidStr).getTime();
       const elapsed = Date.now() - confirmedAt;
       progressPct = Math.min(1, Math.max(0, elapsed / tripWindowMs));
       // Simulate SE direction movement by booking distance
